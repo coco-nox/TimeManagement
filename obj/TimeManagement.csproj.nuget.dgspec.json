@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "c:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj": {}
+    "C:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj": {}
   },
   "projects": {
-    "c:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj": {
+    "C:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "c:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj",
+        "projectUniqueName": "C:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj",
         "projectName": "TimeManagement",
-        "projectPath": "c:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj",
+        "projectPath": "C:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj",
         "packagesPath": "C:\\Users\\cdcha\\.nuget\\packages\\",
-        "outputPath": "c:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\obj\\",
+        "outputPath": "C:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
