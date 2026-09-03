@@ -1,0 +1,47 @@
+@page
+@model SettingsModel
+@{
+    ViewData["Title"] = "Settings";
+}
+
+<h1 class="h3 mb-1">Settings</h1>
+<p class="text-muted">Choose how TimeManage looks.</p>
+
+@if (Model.StatusMessage != null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+<form method="post">
+    <h2 class="h5 mt-4 mb-3">Colour palette</h2>
+
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3">
+        @foreach (var palette in Model.Palettes)
+        {
+            <div class="col">
+                <label class="palette-option d-block">
+                    <input type="radio"
+                           asp-for="SelectedPalette"
+                           value="@palette.Id"
+                           class="visually-hidden" />
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="palette-swatches mb-3" aria-hidden="true">
+                                <span style="background-color:@palette.Swatch1"></span>
+                                <span style="background-color:@palette.Swatch2"></span>
+                                <span style="background-color:@palette.Swatch3"></span>
+                            </div>
+                            <div class="fw-semibold">@palette.Name</div>
+                            <div class="small text-muted">@palette.Description</div>
+                        </div>
+                    </div>
+                </label>
+            </div>
+        }
+    </div>
+
+    <button type="submit" class="btn btn-primary mt-4">Save palette</button>
+</form>
+
+<h2 class="h5 mt-5 mb-3">Account</h2>
+<a asp-page="/ChangePassword" class="btn btn-outline-secondary">Change password</a>

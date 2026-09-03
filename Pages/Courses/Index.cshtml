@@ -1,0 +1,65 @@
+@page
+@model TimeManagement.Pages.Courses.IndexModel
+@{
+    ViewData["Title"] = "Courses";
+}
+
+<h1 class="h3 mb-1">Your courses</h1>
+<p class="text-muted">Create a course, then upload lecture notes, past assessments and other coursework to it.</p>
+
+@if (Model.StatusMessage != null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+<form method="post" class="row g-2 align-items-end mb-4">
+    <div class="col-auto">
+        <label asp-for="Input.Title" class="form-label"></label>
+        <input asp-for="Input.Title" class="form-control" placeholder="e.g. ITEC631" autofocus />
+        <span asp-validation-for="Input.Title" class="text-danger"></span>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Add course</button>
+    </div>
+</form>
+
+@if (!Model.Courses.Any())
+{
+    <p class="text-muted">You haven't added any courses yet.</p>
+}
+else
+{
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3">
+        @foreach (var course in Model.Courses)
+        {
+            var assessmentCount = course.Assessments.Count;
+            // Surfaced so a user can spot at a glance, without opening the
+            // course, which ones still need attention (see Details.cshtml
+            // for where a due date actually gets set). Coursework is
+            // excluded since it doesn't always have a hard due date.
+            var missingDueDateCount = course.Assessments.Count(a => a.DueDate == null && a.Category != AssessmentCategory.Coursework);
+
+            <div class="col">
+                <a asp-page="/Courses/Details" asp-route-id="@course.Id" class="text-decoration-none">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="fw-semibold">@course.Title</div>
+                            <div class="small text-muted">@assessmentCount assessment(s) &middot; @course.Assessments.Sum(a => a.Documents.Count) document(s)</div>
+                            @if (missingDueDateCount > 0)
+                            {
+                                <div class="mt-2 small text-warning-emphasis fw-semibold">
+                                    @missingDueDateCount due date needed — update as soon as possible.
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </a>
+            </div>
+        }
+    </div>
+}
+
+@* Enables client-side validation for the "add course" form above *@
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

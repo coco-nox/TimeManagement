@@ -1,0 +1,9 @@
+{
+    "csharp-dev-tools.entityFramework.migrationPreferences": {
+        "TimeManagement-main.virtual.sln": {
+            "startupProject": "c:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj",
+            "migrationsProject": "c:\\Users\\cdcha\\source\\repos\\TimeManagement-main\\TimeManagement.csproj",
+            "migrationsFolder": "Data/Migrations"
+        }
+    }
+}

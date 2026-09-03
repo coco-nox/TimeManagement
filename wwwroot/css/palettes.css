@@ -1,0 +1,292 @@
+/*
+  Colour palettes.
+
+  How this works:
+  1. The <body> tag gets data-palette="ocean" (or whichever the user picked).
+  2. The matching block below sets the colour variables for that palette.
+  3. The rules at the bottom use those variables, so the whole page changes
+     when the attribute changes. Nothing else needs to know about themes.
+
+  To add a palette: add a block here and an entry in Models/ColourPalettes.cs.
+  Both must use the same id.
+*/
+
+/* ---------- 1. TimeManage (default) ---------- */
+body[data-palette="default"] {
+  --page-bg: #f2e8d9;
+  --surface: #f2ede2;
+  --text: #3d3731;
+  /* The brand's khaki (#cbb093) is too light to use as text on this
+     background (fails WCAG contrast), so muted text uses a darker
+     shade of the same colour instead. The light khaki is still used
+     as-is for borders, where it doesn't need to pass text contrast. */
+  --text-muted: #6b5940;
+  --border: #cbb093;
+  --accent: #6b7f6b;
+  --accent-hover: #6e775c;
+  --accent-text: #ffffff;
+  --danger: #a8402c;
+  /* Links get their own colour (the brand's dusty blue) rather than
+     reusing --accent, because the raw dusty blue doesn't have enough
+     contrast against --accent-text to also work as a button fill. */
+  --link: #4c6b82;
+  --link-hover: #3a5568;
+  --secondary: #c46e4a;
+  --secondary-hover: #a8542f;
+}
+
+/* Outline buttons fill with terracotta instead of sage on hover, so
+   primary and secondary actions stay visually distinct. */
+body[data-palette="default"] .btn-outline-secondary:hover {
+  background-color: var(--secondary-hover);
+  border-color: var(--secondary-hover);
+  color: var(--accent-text);
+}
+
+/* ---------- 2. Ocean ---------- */
+/* No --link/--secondary overrides: this palette (and the ones below,
+   aside from Midnight/contrast where noted) is happy falling back to
+   --accent/--accent-hover via the var() defaults in the shared rules. */
+body[data-palette="ocean"] {
+  --page-bg: #f2fafb;
+  --surface: #ffffff;
+  --text: #10303a;
+  --text-muted: #4a6b74;
+  --border: #cfe9ee;
+  --accent: #0f766e;
+  --accent-hover: #0b5c56;
+  --accent-text: #ffffff;
+  --danger: #b3261e;
+}
+
+/* ---------- 3. Forest ---------- */
+body[data-palette="forest"] {
+  /* Muted, green-tinted neutrals so text and borders feel part of the
+     same family as the accent rather than plain gray. */
+  --page-bg: #f4f9f4;
+  --surface: #ffffff;
+  --text: #1d2b20;
+  --text-muted: #55684f;
+  --border: #d7e8d7;
+  --accent: #2f6b3f;
+  --accent-hover: #245331;
+  --accent-text: #ffffff;
+  --danger: #a32b22;
+}
+
+/* ---------- 4. Sunset ---------- */
+body[data-palette="sunset"] {
+  /* Warm, high-saturation accent (burnt orange), so it needs a fairly
+     dark hover shade to keep enough contrast against white surfaces. */
+  --page-bg: #fff7f2;
+  --surface: #ffffff;
+  --text: #3a2118;
+  --text-muted: #7a5648;
+  --border: #fadfd0;
+  --accent: #c2410c;
+  --accent-hover: #9a330a;
+  --accent-text: #ffffff;
+  --danger: #9f1239;
+}
+
+/* ---------- 5. Lavender ---------- */
+body[data-palette="lavender"] {
+  /* Purple accent, cool-toned neutrals to match. */
+  --page-bg: #faf7fd;
+  --surface: #ffffff;
+  --text: #2b2138;
+  --text-muted: #635471;
+  --border: #e4daf2;
+  --accent: #6d28d9;
+  --accent-hover: #571fae;
+  --accent-text: #ffffff;
+  --danger: #b3261e;
+}
+
+/* ---------- 6. Midnight (dark) ---------- */
+body[data-palette="midnight"] {
+  /* Dark surfaces, so unlike the light palettes --accent-hover is
+     lighter than --accent (not darker) and --accent-text is dark,
+     since the accent itself is a light blue here. */
+  --page-bg: #161a22;
+  --surface: #1e2530;
+  --text: #e8ecf3;
+  --text-muted: #a3aec0;
+  --border: #333d4d;
+  --accent: #60a5fa;
+  --accent-hover: #8ec0fc;
+  --accent-text: #101620;
+  --danger: #ff8a80;
+}
+
+/* ---------- 7. High contrast ---------- */
+body[data-palette="contrast"] {
+  --page-bg: #ffffff;
+  --surface: #ffffff;
+  --text: #000000;
+  --text-muted: #262626;
+  --border: #000000;
+  --accent: #000000;
+  --accent-hover: #333333;
+  --accent-text: #ffffff;
+  --danger: #a80000;
+}
+
+/* Thicker borders and focus rings so this palette is genuinely more usable,
+   not just darker text. */
+body[data-palette="contrast"] .form-control,
+body[data-palette="contrast"] .form-select,
+body[data-palette="contrast"] .card {
+  border-width: 2px;
+}
+
+body[data-palette="contrast"] :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* =========================================================
+   Everything below reads the variables above. These rules are
+   shared by all seven palettes.
+   ========================================================= */
+
+/* Base page colours; everything else below layers on top of this. */
+body {
+  background-color: var(--page-bg);
+  color: var(--text);
+}
+
+/* Bootstrap sets its own colours on the navbar and footer, so these
+   override them. */
+.navbar.bg-white {
+  background-color: var(--surface) !important;
+  border-bottom-color: var(--border) !important;
+}
+
+.navbar .navbar-brand,
+.navbar .nav-link.text-dark {
+  color: var(--text) !important;
+}
+
+.navbar .nav-link.text-dark:hover {
+  color: var(--accent) !important;
+}
+
+.footer,
+.border-top {
+  border-top-color: var(--border) !important;
+}
+
+.footer.text-muted,
+.text-muted {
+  color: var(--text-muted) !important;
+}
+
+/* Falls back to --accent/--accent-hover for palettes (all but default)
+   that don't define their own --link/--link-hover. */
+a {
+  color: var(--link, var(--accent));
+}
+
+a:hover {
+  color: var(--link-hover, var(--accent-hover));
+}
+
+/* Bootstrap's primary button, recoloured to the active palette. */
+.btn-primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-text);
+}
+
+.btn-outline-secondary {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* Default palette overrides this hover with terracotta (see the block
+   above) so secondary actions read as distinct from primary ones; every
+   other palette just falls through to the accent colour here. */
+.btn-outline-secondary:hover {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.card {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.form-control,
+.form-select {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+/* Keep the surface colour on focus too, otherwise Bootstrap's default
+   white focus background clashes with dark palettes like Midnight. */
+.form-control:focus,
+.form-select:focus {
+  background-color: var(--surface);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.form-text {
+  color: var(--text-muted);
+}
+
+.text-danger {
+  color: var(--danger) !important;
+}
+
+/* The palette picker on the settings page. */
+.palette-option {
+  cursor: pointer;
+  height: 100%;
+}
+
+.palette-option .card {
+  transition: border-color 0.15s ease-in-out;
+}
+
+/* Highlights the selected palette's card using the *currently applied*
+   --accent, not the option's own palette, so the highlight itself is
+   only ever visible on the option matching the live theme. */
+.palette-option input[type="radio"]:checked ~ .card {
+  border-color: var(--accent);
+  border-width: 2px;
+}
+
+/* Strip of colour swatches shown on each palette option card. */
+.palette-swatches {
+  display: flex;
+  height: 2.5rem;
+  border-radius: 0.25rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+/* Each swatch (colour) gets equal width. */
+.palette-swatches span {
+  flex: 1;
+}
+
+/* Home page welcome banner (signed-out) and the boxed auth forms
+   (log in / register) both use the same surface + border treatment
+   as cards, so they fit the rest of the page. */
+.hero,
+.auth-card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+}

@@ -1,0 +1,87 @@
+﻿@using Microsoft.AspNetCore.Identity
+@using TimeManagement.Models
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@{
+    // Work out which palette to use. Signed-out visitors get the default one.
+    var palette = ColourPalettes.DefaultId;
+    if (SignInManager.IsSignedIn(User))
+    {
+        var signedInUser = await UserManager.GetUserAsync(User);
+
+        // Only use the saved value if it's still one of our palettes, so an
+        // old or blank value in the database can't leave the page unstyled.
+        if (signedInUser != null && ColourPalettes.IsValid(signedInUser.ColourPalette))
+        {
+            palette = signedInUser.ColourPalette;
+        }
+    }
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - TimeManagement</title>
+    <script type="importmap"></script>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <!-- Reads body[data-palette] below to pick the active colour theme; see palettes.css -->
+    <link rel="stylesheet" href="~/css/palettes.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/TimeManagement.styles.css" asp-append-version="true" />
+</head>
+<!-- data-palette drives which set of CSS variables palettes.css applies -->
+<body data-palette="@palette">
+    <header>
+        <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3 sticky-top">
+            <div class="container">
+                <a class="navbar-brand fw-semibold" asp-area="" asp-page="/Index">📅 TimeManagement</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target=".navbar-collapse" aria-controls="navbarSupportedContent"
+                        aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="navbar-collapse collapse d-sm-inline-flex justify-content-between">
+                    <ul class="navbar-nav flex-grow-1">
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-page="/Index">Home</a>
+                        </li>
+                        @* Courses link only makes sense once there's a user to own courses *@
+                        @if (SignInManager.IsSignedIn(User))
+                        {
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-page="/Courses/Index">Courses</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link text-dark" asp-area="" asp-page="/Tutor/Index">Tutor</a>
+                            </li>
+                        }
+                        <li class="nav-item">
+                            <a class="nav-link text-dark" asp-area="" asp-page="/Privacy">Privacy</a>
+                        </li>
+                    </ul>
+                    @* Account links (login/register) or the signed-in user's name + settings/logout *@
+                    <partial name="_LoginPartial" />
+                </div>
+            </div>
+        </nav>
+    </header>
+    <div class="container">
+        <main role="main" class="pb-3">
+            @RenderBody()
+        </main>
+    </div>
+
+    <footer class="border-top footer text-muted">
+        <div class="container">
+            &copy; 2026 - TimeManagement - <a asp-area="" asp-page="/Privacy">Privacy</a>
+        </div>
+    </footer>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    @* Lets individual pages (e.g. client-side validation) inject their own scripts here *@
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

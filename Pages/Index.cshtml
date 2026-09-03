@@ -1,0 +1,70 @@
+@page
+@using Microsoft.AspNetCore.Identity
+@using TimeManagement.Models
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@model IndexModel
+@{
+    ViewData["Title"] = "Home";
+}
+
+@if (SignInManager.IsSignedIn(User))
+{
+    var currentUser = await UserManager.GetUserAsync(User);
+
+    <div class="home-shell">
+        <div class="home-primary-panel card">
+            <div class="card-body p-4 p-md-5">
+                <p class="text-uppercase small text-muted mb-2">Overview</p>
+                <h1 class="h3 mb-2">Welcome back, @currentUser?.FullName</h1>
+                <p class="text-muted mb-4">Keep your course work organised and review what needs attention next.</p>
+
+                <div class="d-flex flex-wrap align-items-center gap-3">
+                    <a class="btn btn-primary" asp-page="/Courses/Index">Open courses</a>
+                    <span class="small text-muted">Primary focus: current course and assessment work</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="home-secondary-panel mt-4">
+            <div class="card">
+                <div class="card-body p-4">
+                    <h2 class="h6 text-uppercase text-muted mb-3">Quick actions</h2>
+                    <ul class="home-secondary-list mb-0">
+                        <li><a asp-page="/Courses/Index">Review your courses</a></li>
+                        <li><a asp-page="/Courses/Index">Check due dates and missing updates</a></li>
+                        <li><span class="text-muted">Calendar planning is still in a later sprint</span></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="home-muted-notice mt-4">
+            <span class="home-mini-label">Coming soon</span>
+            Calendar view, weekly planning, and automated nudges will appear here once those features are ready.
+        </div>
+    </div>
+}
+else
+{
+    <div class="hero text-center">
+        <div class="hero-icon mb-3">🧭</div>
+        <h1 class="display-4">TimeManage</h1>
+        <p class="lead mb-3">Plan your deadlines around the time you actually have.</p>
+        <p class="mb-0">
+            <a class="btn btn-primary btn-lg" asp-page="/Account/Register">Get started</a>
+            <a class="btn btn-outline-secondary btn-lg" asp-page="/Account/Login">Log in</a>
+        </p>
+    </div>
+}
+
+<div class="mt-5">
+    <h2 class="h6 text-muted text-uppercase mb-3">Coming soon</h2>
+    <div class="coming-soon-strip d-flex flex-wrap gap-2">
+        <span class="coming-soon-chip"><span aria-hidden="true">⏱️</span> Time tracking that learns</span>
+        <span class="coming-soon-chip"><span aria-hidden="true">🔔</span> Live nudges</span>
+        <span class="coming-soon-chip"><span aria-hidden="true">🎯</span> Smart categories</span>
+        <span class="coming-soon-chip"><span aria-hidden="true">📊</span> Weekly check-in</span>
+        <span class="coming-soon-chip"><span aria-hidden="true">💬</span> Chat with your planner</span>
+    </div>
+</div>

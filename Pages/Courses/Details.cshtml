@@ -1,0 +1,168 @@
+@page "{id:int}"
+@model TimeManagement.Pages.Courses.DetailsModel
+@{
+    ViewData["Title"] = Model.Course.Title;
+}
+
+<p><a asp-page="/Courses/Index">&larr; Back to courses</a></p>
+
+<h1 class="h3 mb-1">@Model.Course.Title</h1>
+<p class="text-muted">Created @Model.Course.CreatedUtc.ToString("d MMM yyyy")</p>
+
+@if (Model.StatusMessage != null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+@if (Model.ErrorMessage != null)
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
+
+<h2 class="h5 mt-4 mb-3">Upload a document</h2>
+@* Each upload creates a new Assessment (named after the file) plus its
+   attached Document; the category picked here decides both which
+   section it lands in below and which on-disk subfolder it's saved to
+   (see OnPostUploadAsync / GetCategoryFolder in the code-behind). The
+   accept attribute is just a UI hint — the real allow-list is enforced
+   server-side. *@
+<form method="post" asp-page-handler="Upload" asp-route-id="@Model.Course.Id" enctype="multipart/form-data" class="row g-2 align-items-center mb-1">
+    <div class="col-auto">
+        <input type="file" name="UploadedFile" class="form-control" accept=".pdf,.docx" />
+    </div>
+    <div class="col-auto">
+        <label for="uploadCategory" class="visually-hidden">Assessment type</label>
+        <select id="uploadCategory" name="UploadCategory" class="form-select">
+            @foreach (var category in Enum.GetValues<AssessmentCategory>())
+            {
+                <option value="@category">@category</option>
+            }
+        </select>
+    </div>
+    <div class="col-auto">
+        <button type="submit" class="btn btn-primary">Upload</button>
+    </div>
+</form>
+<p class="text-muted small mb-4">PDF and Word (.docx) files, up to 20 MB.</p>
+
+<h2 class="h5 mt-4 mb-3">Assessments</h2>
+
+@if (!Model.Course.Assessments.Any())
+{
+    <p class="text-muted">No assessments uploaded yet.</p>
+}
+else
+{
+    // Assessments are grouped and rendered by category (Quiz, Coursework,
+    // etc.) rather than as one flat list, matching how uploads are sorted
+    // into per-category folders on disk (see GetCategoryFolder in the
+    // code-behind).
+    var categories = Enum.GetValues<AssessmentCategory>();
+
+    foreach (var category in categories)
+    {
+        // Undated assessments sort last within the category, and the
+        // "due date needed" banner below is what nudges the due date to
+        // actually get set.
+        var assessments = Model.Course.Assessments
+            .Where(a => a.Category == category)
+            .OrderBy(a => a.DueDate ?? DateTime.MaxValue)
+            .ThenBy(a => a.Title)
+            .ToList();
+
+        // Skip categories with nothing in them instead of showing an
+        // empty heading for each of the AssessmentCategory values.
+        if (!assessments.Any())
+        {
+            continue;
+        }
+
+        <div class="mb-4">
+            <h3 class="h6 text-uppercase text-muted mb-2">@category</h3>
+
+            <div class="list-group">
+                @foreach (var assessment in assessments)
+                {
+                    <div class="list-group-item">
+                        <div class="d-flex justify-content-between align-items-start gap-3">
+                            <div>
+                                <div class="fw-semibold">@assessment.Title</div>
+                                <div class="small text-muted">
+                                    @if (assessment.DueDate.HasValue)
+                                    {
+                                        <span>Due @assessment.DueDate.Value.ToString("d MMM yyyy")</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Due date pending</span>
+                                    }
+                                </div>
+                            </div>
+                            <span class="badge text-bg-light">@assessment.Category</span>
+                        </div>
+
+                        <form method="post" asp-page-handler="UpdateAssessmentCategory" asp-route-id="@Model.Course.Id" asp-route-assessmentId="@assessment.Id" class="d-flex align-items-center gap-2 mt-3">
+                            <label for="category-@assessment.Id" class="small text-muted mb-0">Category</label>
+                            <select id="category-@assessment.Id" name="category" class="form-select form-select-sm w-auto">
+                                @foreach (var option in Enum.GetValues<AssessmentCategory>())
+                                {
+                                    <option value="@option" selected="@(assessment.Category == option ? "selected" : null)">@option</option>
+                                }
+                            </select>
+                            <button type="submit" class="btn btn-outline-secondary btn-sm">Move</button>
+                        </form>
+
+                        @* Coursework doesn't always have a hard due date, so only nag about
+                           a missing one for the categories where it actually matters. *@
+                        @if (assessment.DueDate == null && assessment.Category != AssessmentCategory.Coursework)
+                        {
+                            <div class="mt-2 alert alert-warning py-2 px-3 mb-0" role="alert">
+                                Due date needed — update as soon as possible.
+                            </div>
+                        }
+
+                        @* Every assessment can have multiple uploaded documents attached
+                           (e.g. the brief plus a marking rubric); newest upload first. *@
+                        @if (assessment.Documents.Any())
+                        {
+                            <div class="mt-3">
+                                <div class="small text-muted mb-2">Documents</div>
+                                <ul class="list-group list-group-flush">
+                                    @foreach (var document in assessment.Documents.OrderByDescending(d => d.UploadedUtc))
+                                    {
+                                        <li class="list-group-item px-0">
+                                            <div class="d-flex justify-content-between align-items-center gap-3">
+                                                <div>
+                                                    <div class="fw-semibold">@document.OriginalFileName</div>
+                                                    <div class="small text-muted">
+                                                        Uploaded @document.UploadedUtc.ToString("d MMM yyyy")
+                                                        @* ExtractedText feeds the due-date auto-categorisation in
+                                                           DocumentCategorizationService; flag when that didn't happen
+                                                           so a missing due date makes sense to the user. *@
+                                                        @if (string.IsNullOrEmpty(document.ExtractedText))
+                                                        {
+                                                            <span>&middot; text not extracted</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                @* Confirm dialog because deletion also removes the file from disk
+                                                   (see OnPostDeleteDocumentAsync) and can't be undone. *@
+                                                <form method="post" asp-page-handler="DeleteDocument" asp-route-id="@Model.Course.Id" asp-route-documentId="@document.Id"
+                                                      onsubmit="return confirm('Delete this document?');">
+                                                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                                </form>
+                                            </div>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="mt-3 small text-muted">No documents uploaded for this assessment yet.</div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}

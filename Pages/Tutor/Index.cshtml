@@ -1,0 +1,162 @@
+@page
+@model TimeManagement.Pages.Tutor.IndexModel
+@{
+    ViewData["Title"] = "Tutor";
+}
+
+<h1 class="h3 mb-3">Tutor</h1>
+
+@* Single tab today; Quiz/Test/Report tabs are a future sprint, not built here. *@
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <span class="nav-link active">Chat</span>
+    </li>
+</ul>
+
+<div class="row g-2 align-items-center mb-3">
+    <div class="col-auto">
+        <label for="courseSelect" class="col-form-label">Course</label>
+    </div>
+    <div class="col-auto">
+        @* Plain navigation on change - selecting a course is its own step,
+           only sending a chat message needs to avoid a full page reload. *@
+        <select id="courseSelect" class="form-select" onchange="location.href = '?courseId=' + this.value">
+            <option value="" disabled selected="@(Model.SelectedCourseId == null ? "selected" : null)">Choose a course...</option>
+            @foreach (var course in Model.Courses)
+            {
+                <option value="@course.Id" selected="@(Model.SelectedCourseId == course.Id ? "selected" : null)">@course.Title</option>
+            }
+        </select>
+    </div>
+</div>
+
+@if (!Model.Courses.Any())
+{
+    <p class="text-muted">You don't have any courses yet. <a asp-page="/Courses/Index">Add one</a> before using the tutor.</p>
+}
+else if (Model.SelectedCourseId == null)
+{
+    <p class="text-muted">Choose a course above to start asking questions about its documents.</p>
+}
+else
+{
+    <div id="chatWindow" class="border rounded p-3 mb-3" style="height: 420px; overflow-y: auto;">
+        @if (!Model.ChatHistory.Any())
+        {
+            <p class="text-muted small mb-0" id="chatEmptyState">Ask a question about this course's documents to get started.</p>
+        }
+        else
+        {
+            foreach (var message in Model.ChatHistory)
+            {
+                if (message.Role == "assistant")
+                {
+                    <div class="d-flex justify-content-start mb-2">
+                        <div class="bg-light rounded p-2" style="max-width: 75%;">
+                            <div>@message.Content</div>
+                            @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
+                            {
+                                <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
+                            }
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="d-flex justify-content-end mb-2">
+                        <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
+                    </div>
+                }
+            }
+        }
+    </div>
+
+    <form id="chatForm" class="d-flex gap-2" autocomplete="off">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="courseId" value="@Model.SelectedCourseId" />
+        <label for="chatQuestion" class="visually-hidden">Question</label>
+        <input type="text" name="question" id="chatQuestion" class="form-control" placeholder="Ask a question about this course..." required />
+        <button type="submit" class="btn btn-primary" id="chatSendButton">Send</button>
+    </form>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            var chatForm = document.getElementById('chatForm');
+            if (!chatForm) {
+                return;
+            }
+
+            var chatWindow = document.getElementById('chatWindow');
+            var sendButton = document.getElementById('chatSendButton');
+            var questionInput = document.getElementById('chatQuestion');
+            var emptyState = document.getElementById('chatEmptyState');
+
+            function appendMessage(role, content, source) {
+                if (emptyState) {
+                    emptyState.remove();
+                    emptyState = null;
+                }
+
+                var row = document.createElement('div');
+                row.className = 'd-flex mb-2 ' + (role === 'assistant' ? 'justify-content-start' : 'justify-content-end');
+
+                var bubble = document.createElement('div');
+                bubble.className = (role === 'assistant' ? 'bg-light' : 'bg-primary text-white') + ' rounded p-2';
+                bubble.style.maxWidth = '75%';
+
+                var text = document.createElement('div');
+                text.textContent = content;
+                bubble.appendChild(text);
+
+                if (role === 'assistant' && source) {
+                    var sourceLine = document.createElement('div');
+                    sourceLine.className = 'small text-muted mt-1';
+                    sourceLine.textContent = 'Source: ' + source;
+                    bubble.appendChild(sourceLine);
+                }
+
+                row.appendChild(bubble);
+                chatWindow.appendChild(row);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+
+            chatForm.addEventListener('submit', function (event) {
+                event.preventDefault();
+
+                var question = questionInput.value.trim();
+                if (!question) {
+                    return;
+                }
+
+                appendMessage('user', question, null);
+                questionInput.value = '';
+                sendButton.disabled = true;
+
+                var formData = new FormData(chatForm);
+
+                fetch(window.location.pathname + '?handler=Ask', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Request failed with status ' + response.status);
+                        }
+                        return response.json();
+                    })
+                    .then(function (result) {
+                        appendMessage('assistant', result.answer, result.sourceDocument);
+                    })
+                    .catch(function () {
+                        appendMessage('assistant', "Something went wrong sending that question. Please try again.", null);
+                    })
+                    .finally(function () {
+                        sendButton.disabled = false;
+                        questionInput.focus();
+                    });
+            });
+        })();
+    </script>
+}

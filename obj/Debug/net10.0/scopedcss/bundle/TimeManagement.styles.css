@@ -1,0 +1,38 @@
+/* /Pages/Shared/_Layout.cshtml.rz.scp.css */
+/* Please see documentation at https://learn.microsoft.com/aspnet/core/client-side/bundling-and-minification
+for details on configuring this project to bundle and minify static web assets. */
+
+/* Colours are deliberately NOT set here. This file is "scoped CSS", which
+   ASP.NET loads last and with high priority, so any colour set here would
+   beat the user's chosen palette. All colours live in wwwroot/css/palettes.css. */
+
+a.navbar-brand[b-1fssfgnkfr] {
+  white-space: normal;
+  text-align: center;
+  word-break: break-all;
+}
+
+.border-top[b-1fssfgnkfr] {
+  border-top: 1px solid var(--border);
+}
+
+.border-bottom[b-1fssfgnkfr] {
+  border-bottom: 1px solid var(--border);
+}
+
+.box-shadow[b-1fssfgnkfr] {
+  box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .05);
+}
+
+button.accept-policy[b-1fssfgnkfr] {
+  font-size: 1rem;
+  line-height: inherit;
+}
+
+.footer[b-1fssfgnkfr] {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  white-space: nowrap;
+  line-height: 60px;
+}
