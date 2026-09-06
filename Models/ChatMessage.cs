@@ -29,4 +29,20 @@ public class ChatMessage
     public string? SourceDocument { get; set; }
 
     public DateTime SentUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>
+    /// Groups messages into one chat thread for a course. All messages sent
+    /// between "start" and the next archive/restart share the same id - see
+    /// TutorChatService's caller (Pages/Tutor/Index.cshtml.cs) for how the
+    /// active conversation is found and how a new one gets started.
+    /// </summary>
+    public Guid ConversationId { get; set; }
+
+    /// <summary>
+    /// Null while this message's conversation is the active one shown on
+    /// the Tutor page. Set (to when the archive happened) once the student
+    /// archives the conversation, at which point it stops showing in the
+    /// active chat window but its row is kept rather than deleted.
+    /// </summary>
+    public DateTime? ArchivedUtc { get; set; }
 }

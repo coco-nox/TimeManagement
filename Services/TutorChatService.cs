@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -10,8 +11,7 @@ namespace TimeManagement.Services;
 /// Answers a student's question about a course using only the extracted
 /// text of that course's uploaded documents. Reuses the same AI provider
 /// config as <see cref="DocumentCategorizationService"/> (same appsettings.json
-/// "DocumentCategorization" section, same HTTP endpoint) rather than a
-/// second AI integration.
+/// "Gemini" section, same HTTP endpoint) rather than a second AI integration.
 /// </summary>
 public sealed partial class TutorChatService(HttpClient httpClient, IOptions<DocumentCategorizationOptions> options)
 {
@@ -29,6 +29,11 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
     [GeneratedRegex("^```(json|JSON)?\\s*|\\s*```$", RegexOptions.Singleline)]
     private static partial Regex JsonFenceRemover();
 
+    /// <summary>
+    /// Main entry point, called once per chat message. Builds a prompt from
+    /// the course's document text, sends it to Gemini, and returns the
+    /// answer plus which document it was drawn from (if any).
+    /// </summary>
     public async Task<TutorChatResult> AskAsync(
         string question,
         IReadOnlyList<TutorSourceDocument> documents,
@@ -41,6 +46,8 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
                 null);
         }
 
+        // Only documents with successfully extracted text are useful here -
+        // a document with none would just add noise to the prompt.
         var usableDocuments = documents.Where(d => !string.IsNullOrWhiteSpace(d.ExtractedText)).ToList();
         if (usableDocuments.Count == 0)
         {
@@ -52,6 +59,8 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
         var (context, wasTruncated) = BuildContext(usableDocuments);
         var prompt = BuildPrompt(question, context, wasTruncated);
 
+        // Gemini's generateContent request shape: a system instruction
+        // (the tutor's ground rules) plus one user turn (the prompt built above).
         var payload = new
         {
             systemInstruction = new
@@ -83,6 +92,28 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
         using var response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+                // Gemini's free tier returns a quotaId containing "PerDay" specifically
+                // when the whole day's request allowance is used up (see
+                // https://ai.google.dev/gemini-api/docs/rate-limits) - that's a wait
+                // until the next daily reset, not something retrying in a few seconds
+                // fixes, so it gets a message that says so instead of "try again".
+                if (errorBody.Contains("PerDay", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new TutorChatResult(
+                        "The AI tutor has reached its daily question limit. It resets at midnight " +
+                        "Pacific Time - please try again after that.",
+                        null);
+                }
+
+                return new TutorChatResult(
+                    "The AI tutor is being rate-limited right now. Please wait a moment and try again.",
+                    null);
+            }
+
             return new TutorChatResult($"The AI tutor request failed (HTTP {(int)response.StatusCode}). Please try again.", null);
         }
 
@@ -151,6 +182,8 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
         return (builder.ToString(), wasTruncated);
     }
 
+    // Combines the document context and the student's question into the
+    // single user-turn prompt text sent to Gemini.
     private static string BuildPrompt(string question, string context, bool wasTruncated)
     {
         var truncationNote = wasTruncated
@@ -161,6 +194,9 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
                "\nStudent question:\n" + question.Trim();
     }
 
+    // Parses the model's reply as { answer, source } JSON. Returns null
+    // (not a thrown exception) for anything that doesn't fit, so AskAsync
+    // can fall back to showing the raw reply instead of a dead end.
     private static TutorChatResult? ParseResponse(string aiResponse)
     {
         var text = aiResponse.Trim();

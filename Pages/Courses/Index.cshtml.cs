@@ -284,6 +284,51 @@ public class IndexModel(
     }
 
     /// <summary>
+    /// Deletes an assessment entirely - whatever its category (Coursework,
+    /// Quiz, Report, Test) - along with every document attached to it, both
+    /// the database rows and the files on disk. Unlike
+    /// <see cref="OnPostDeleteDocumentAsync"/>, which only removes one file
+    /// at a time, this removes the assessment itself.
+    /// </summary>
+    public async Task<IActionResult> OnPostDeleteAssessmentAsync(int courseId, int assessmentId)
+    {
+        var course = await LoadOwnedCourseAsync(courseId);
+        if (course == null)
+        {
+            return NotFound();
+        }
+
+        var assessment = await _db.Assessments
+            .Include(a => a.Documents)
+            .FirstOrDefaultAsync(a => a.Id == assessmentId && a.CourseId == course.Id);
+
+        if (assessment == null)
+        {
+            return NotFound();
+        }
+
+        // The Documents rows disappear on their own via the cascade delete
+        // configured in ApplicationDbContext, but that only removes database
+        // rows - the files on disk need deleting explicitly, same as
+        // OnPostDeleteDocumentAsync does for a single document.
+        var categoryFolder = GetCategoryFolder(course.Id, assessment.Category);
+        foreach (var document in assessment.Documents)
+        {
+            var filePath = Path.Combine(categoryFolder, document.StoredFileName);
+            if (System.IO.File.Exists(filePath))
+            {
+                System.IO.File.Delete(filePath);
+            }
+        }
+
+        _db.Assessments.Remove(assessment);
+        await _db.SaveChangesAsync();
+
+        StatusMessage = $"\"{assessment.Title}\" was deleted.";
+        return RedirectToPage(new { courseId });
+    }
+
+    /// <summary>
     /// A real, simple stand-in for progress until actual checklists (Report)
     /// and quiz results (Quiz/Test) exist: how much of the time between an
     /// assessment being added and its due date has elapsed. Null percent

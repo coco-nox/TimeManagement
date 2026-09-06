@@ -192,6 +192,12 @@
                                         {
                                             <div class="mt-2 small text-muted">No documents uploaded for this assessment yet.</div>
                                         }
+
+                                        <form method="post" asp-page-handler="DeleteAssessment" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id"
+                                              class="mt-3 pt-2 border-top"
+                                              onsubmit="return confirm('Delete this assessment and all @assessment.Documents.Count document(s) attached to it? This can\'t be undone.');">
+                                            <button type="submit" class="btn btn-outline-danger btn-sm">Delete assessment</button>
+                                        </form>
                                     </details>
                                 </div>
                             }

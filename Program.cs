@@ -6,6 +6,9 @@ using TimeManagement.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// ---------------------------------------------------------------------
+// Database: SQLite via EF Core, one file for the whole app.
+// ---------------------------------------------------------------------
 // Add services to the container.
 // Use an absolute path rooted at the project's ContentRootPath so the same
 // TimeManage.db file is used regardless of how the app is launched (Visual
@@ -17,6 +20,9 @@ var connectionString = $"Data Source={dbPath}";
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseSqlite(connectionString));
 
+// ---------------------------------------------------------------------
+// Identity: user accounts, password rules, and lockout policy.
+// ---------------------------------------------------------------------
 builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     {
         // Password rules. Enforced server-side by Identity and surfaced
@@ -41,6 +47,10 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddDefaultTokenProviders();
 
+// ---------------------------------------------------------------------
+// Auth cookie: where Identity sends signed-out users, and how long a
+// session lasts.
+// ---------------------------------------------------------------------
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.LoginPath = "/Account/Login";
@@ -59,6 +69,11 @@ builder.Services.ConfigureApplicationCookie(options =>
         : CookieSecurePolicy.Always;
 });
 
+// ---------------------------------------------------------------------
+// AI provider: Gemini config (key/endpoint/model) plus the two typed
+// HttpClients that call it - one per AI feature (document categorisation,
+// Tutor chat).
+// ---------------------------------------------------------------------
 builder.Services.Configure<DocumentCategorizationOptions>(builder.Configuration.GetSection("Gemini"));
 builder.Services.AddHttpClient<DocumentCategorizationService>();
 
@@ -67,6 +82,9 @@ builder.Services.AddHttpClient<DocumentCategorizationService>();
 // separate integration.
 builder.Services.AddHttpClient<TutorChatService>();
 
+// ---------------------------------------------------------------------
+// Razor Pages: page routing plus the folder-level sign-in requirement.
+// ---------------------------------------------------------------------
 var razorPagesBuilder = builder.Services.AddRazorPages(options =>
 {
     // Everything requires a signed-in user except the pages opted out below.
@@ -90,9 +108,15 @@ if (builder.Environment.IsDevelopment())
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// ---------------------------------------------------------------------
+// HTTP request pipeline. Order matters here: each app.Use... call wraps
+// the ones after it, so e.g. auth has to run before routing decides
+// which page handles the request.
+// ---------------------------------------------------------------------
 if (!app.Environment.IsDevelopment())
 {
+    // Only outside Development: shows a generic error page instead of a
+    // stack trace to real users, and tells browsers to always use HTTPS.
     app.UseExceptionHandler("/Error");
     // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
@@ -102,13 +126,21 @@ app.UseHttpsRedirection();
 
 app.UseRouting();
 
+// Who is this request from, and are they allowed to see this page - in
+// that order, since you can't authorize a request before you know who
+// sent it.
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Wires up the actual page/static-file endpoints the routing above dispatches to.
 app.MapStaticAssets();
 app.MapRazorPages()
    .WithStaticAssets();
 
+// ---------------------------------------------------------------------
+// Startup task: bring the database schema up to date before serving
+// any requests.
+// ---------------------------------------------------------------------
 // Apply any pending migrations at startup so a fresh clone just runs.
 using (var scope = app.Services.CreateScope())
 {

@@ -21,11 +21,20 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
     [GeneratedRegex("^```(json|JSON)?\\s*|\\s*```$", RegexOptions.Singleline)]
     private static partial Regex JsonFenceRemover();
 
+    /// <summary>
+    /// Main entry point, called once per uploaded document. Tries the AI
+    /// first and falls back to simple keyword matching whenever the AI
+    /// can't be used (no key, no text) or fails, so an upload never ends up
+    /// with no category suggestion at all.
+    /// </summary>
     public async Task<AssessmentCategorizationResult> CategorizeAsync(string extractedText, CancellationToken cancellationToken = default)
     {
         var normalizedText = string.IsNullOrWhiteSpace(extractedText) ? string.Empty : extractedText.Trim();
         var keywordCategory = InferCategoryFromKeywords(normalizedText);
 
+        // No text to work with (extraction failed or produced nothing) -
+        // keyword matching has nothing to search either, so skip straight
+        // to a default rather than calling the AI with an empty prompt.
         if (string.IsNullOrWhiteSpace(normalizedText))
         {
             return new AssessmentCategorizationResult(
@@ -37,6 +46,8 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
                     : "No AI key configured or no text available for analysis.");
         }
 
+        // No API key configured - same fallback, but text was available so
+        // the keyword pass had something real to work with.
         if (string.IsNullOrWhiteSpace(_options.ApiKey))
         {
             return new AssessmentCategorizationResult(
@@ -48,6 +59,8 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
                     : "No AI key configured or no text available for analysis.");
         }
 
+        // Build and send the Gemini request: a short system instruction plus
+        // the document text, asking for category + due date as JSON.
         var prompt = BuildPrompt(normalizedText);
         var payload = new
         {
@@ -81,6 +94,9 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
                     : $"AI categorization failed with HTTP {(int)response.StatusCode}.");
         }
 
+        // Pull the model's reply text out of Gemini's response shape
+        // (candidates[0].content.parts[0].text) and try to parse it as the
+        // { category, dueDate } JSON we asked for.
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
         var json = JsonDocument.Parse(responseJson);
         var content = json.RootElement;
@@ -109,6 +125,10 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
                 : "The AI response did not contain a usable classification.");
     }
 
+    // Fallback classifier for when the AI can't be used: looks for a handful
+    // of category-specific words/phrases in the document text. Checked in a
+    // fixed order (Quiz, Test, Report, Coursework) so a document mentioning
+    // more than one just takes the first match.
     private static AssessmentCategory? InferCategoryFromKeywords(string extractedText)
     {
         if (string.IsNullOrWhiteSpace(extractedText))
@@ -141,6 +161,7 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
         return null;
     }
 
+    // True if any of the given tokens appears anywhere in value.
     private static bool ContainsAny(string value, params string[] tokens)
     {
         foreach (var token in tokens)
@@ -154,6 +175,9 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
         return false;
     }
 
+    // The user-turn text sent to Gemini: instructions plus up to the first
+    // 5,000 characters of the document (long enough for context, short
+    // enough to keep the request cheap and fast).
     private static string BuildPrompt(string extractedText)
     {
         var sample = extractedText.Length > 5000 ? extractedText[..5000] : extractedText;
@@ -163,6 +187,9 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
                "Use the text to infer the category, not the filename.\n\nText:\n" + sample;
     }
 
+    // Parses the model's reply as { category, dueDate } JSON. Returns null
+    // (not a thrown exception) for anything that doesn't fit the expected
+    // shape, so the caller can fall back to the keyword result instead.
     private static AssessmentCategorizationResult? ParseResponse(string aiResponse)
     {
         var text = aiResponse.Trim();
