@@ -18,5 +18,5 @@ public class Course
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
-    public List<Assessment> Assessments { get; set; } = new();
+    public List<Assessment> Assessments { get; set; } = [];
 }

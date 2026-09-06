@@ -31,5 +31,5 @@ public class Assessment
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
 
-    public List<Document> Documents { get; set; } = new();
+    public List<Document> Documents { get; set; } = [];
 }

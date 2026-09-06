@@ -59,7 +59,7 @@ builder.Services.ConfigureApplicationCookie(options =>
         : CookieSecurePolicy.Always;
 });
 
-builder.Services.Configure<DocumentCategorizationOptions>(builder.Configuration.GetSection("DocumentCategorization"));
+builder.Services.Configure<DocumentCategorizationOptions>(builder.Configuration.GetSection("Gemini"));
 builder.Services.AddHttpClient<DocumentCategorizationService>();
 
 // TutorChatService reuses the same DocumentCategorizationOptions/endpoint
@@ -67,7 +67,7 @@ builder.Services.AddHttpClient<DocumentCategorizationService>();
 // separate integration.
 builder.Services.AddHttpClient<TutorChatService>();
 
-builder.Services.AddRazorPages(options =>
+var razorPagesBuilder = builder.Services.AddRazorPages(options =>
 {
     // Everything requires a signed-in user except the pages opted out below.
     options.Conventions.AuthorizeFolder("/");
@@ -76,6 +76,17 @@ builder.Services.AddRazorPages(options =>
     options.Conventions.AllowAnonymousToPage("/Privacy");
     options.Conventions.AllowAnonymousToPage("/Error");
 });
+
+#if DEBUG
+// Recompiles .cshtml files on request so edits show up on a browser refresh
+// instead of needing a full rebuild + restart. Debug-only (see the
+// conditional PackageReference in the .csproj) and further gated on the
+// environment here, so a Debug build never picks this up outside dev.
+if (builder.Environment.IsDevelopment())
+{
+    razorPagesBuilder.AddRazorRuntimeCompilation();
+}
+#endif
 
 var app = builder.Build();
 

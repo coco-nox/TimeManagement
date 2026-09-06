@@ -206,6 +206,23 @@ a:hover {
   color: var(--accent-text);
 }
 
+/* Bootstrap's disabled state falls back to its own --bs-btn-bg (plain
+   blue) rather than the background-color set above, since that fallback
+   reads a Bootstrap custom property this rule never touches. Set it
+   explicitly so a disabled Send button (e.g. while the Tutor chat is
+   waiting on a reply) still reads as this palette's accent colour. */
+.btn-primary:disabled {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Used for the Tutor chat's outgoing message bubbles, not just buttons. */
+.bg-primary {
+  background-color: var(--accent) !important;
+  color: var(--accent-text) !important;
+}
+
 .btn-outline-secondary {
   border-color: var(--border);
   color: var(--text);
@@ -224,6 +241,25 @@ a:hover {
   background-color: var(--surface);
   border-color: var(--border);
   color: var(--text);
+}
+
+/* Course/assessment sidebar lists (Tutor, Courses). */
+.list-group-item {
+  background-color: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.list-group-item-action:hover,
+.list-group-item-action:focus {
+  background-color: var(--page-bg);
+  color: var(--text);
+}
+
+.list-group-item.active {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
 }
 
 .form-control,

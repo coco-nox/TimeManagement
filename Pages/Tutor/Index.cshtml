@@ -4,81 +4,150 @@
     ViewData["Title"] = "Tutor";
 }
 
-<h1 class="h3 mb-3">Tutor</h1>
+<h1 class="h3 mb-1">Tutor</h1>
+<p class="text-muted">Ask questions about your course material, or test yourself with a generated quiz.</p>
 
-@* Single tab today; Quiz/Test/Report tabs are a future sprint, not built here. *@
+@* Quiz & test and Report are a future sprint - shown so the plan is visible, not clickable yet. *@
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
         <span class="nav-link active">Chat</span>
     </li>
+    <li class="nav-item">
+        <span class="nav-link disabled" aria-disabled="true" title="Coming soon">Quiz &amp; test</span>
+    </li>
+    <li class="nav-item">
+        <span class="nav-link disabled" aria-disabled="true" title="Coming soon">Report</span>
+    </li>
 </ul>
 
-<div class="row g-2 align-items-center mb-3">
-    <div class="col-auto">
-        <label for="courseSelect" class="col-form-label">Course</label>
-    </div>
-    <div class="col-auto">
-        @* Plain navigation on change - selecting a course is its own step,
-           only sending a chat message needs to avoid a full page reload. *@
-        <select id="courseSelect" class="form-select" onchange="location.href = '?courseId=' + this.value">
-            <option value="" disabled selected="@(Model.SelectedCourseId == null ? "selected" : null)">Choose a course...</option>
-            @foreach (var course in Model.Courses)
-            {
-                <option value="@course.Id" selected="@(Model.SelectedCourseId == course.Id ? "selected" : null)">@course.Title</option>
-            }
-        </select>
-    </div>
-</div>
+<div class="row g-3">
+    <div class="col-lg-3">
+        <div class="card text-center mb-3">
+            <div class="card-body py-3">
+                <div class="display-6 fw-bold">@Model.TotalAssessmentsTracked</div>
+                <div class="small text-muted text-uppercase">Assessments tracked</div>
+            </div>
+        </div>
 
-@if (!Model.Courses.Any())
-{
-    <p class="text-muted">You don't have any courses yet. <a asp-page="/Courses/Index">Add one</a> before using the tutor.</p>
-}
-else if (Model.SelectedCourseId == null)
-{
-    <p class="text-muted">Choose a course above to start asking questions about its documents.</p>
-}
-else
-{
-    <div id="chatWindow" class="border rounded p-3 mb-3" style="height: 420px; overflow-y: auto;">
-        @if (!Model.ChatHistory.Any())
+        <div class="small text-muted text-uppercase fw-semibold mb-2">Your courses</div>
+
+        @if (!Model.Courses.Any())
         {
-            <p class="text-muted small mb-0" id="chatEmptyState">Ask a question about this course's documents to get started.</p>
+            <p class="text-muted small">You don't have any courses yet. <a asp-page="/Courses/Index">Add one</a> before using the tutor.</p>
         }
         else
         {
-            foreach (var message in Model.ChatHistory)
-            {
-                if (message.Role == "assistant")
+            <div class="list-group">
+                @foreach (var course in Model.Courses)
                 {
-                    <div class="d-flex justify-content-start mb-2">
-                        <div class="bg-light rounded p-2" style="max-width: 75%;">
-                            <div>@message.Content</div>
-                            @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
-                            {
-                                <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
-                            }
-                        </div>
-                    </div>
+                    var docCount = course.Assessments.Sum(a => a.Documents.Count);
+                    <a asp-page="/Tutor/Index" asp-route-courseId="@course.Id"
+                       class="list-group-item list-group-item-action @(Model.SelectedCourseId == course.Id ? "active" : "")">
+                        <div class="fw-semibold">@course.Title</div>
+                        <div class="small @(Model.SelectedCourseId == course.Id ? "" : "text-muted")">@docCount document@(docCount == 1 ? "" : "s")</div>
+                    </a>
                 }
-                else
-                {
-                    <div class="d-flex justify-content-end mb-2">
-                        <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
-                    </div>
-                }
-            }
+            </div>
         }
     </div>
 
-    <form id="chatForm" class="d-flex gap-2" autocomplete="off">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="courseId" value="@Model.SelectedCourseId" />
-        <label for="chatQuestion" class="visually-hidden">Question</label>
-        <input type="text" name="question" id="chatQuestion" class="form-control" placeholder="Ask a question about this course..." required />
-        <button type="submit" class="btn btn-primary" id="chatSendButton">Send</button>
-    </form>
-}
+    <div class="col-lg-9">
+        @if (Model.Courses.Any() && Model.SelectedCourseId == null)
+        {
+            <p class="text-muted">Choose a course from the list to start asking questions about its documents.</p>
+        }
+        else if (Model.SelectedCourse != null)
+        {
+            var totalDocs = Model.SelectedCourse.Assessments.Sum(a => a.Documents.Count);
+            <div class="card">
+                <div class="p-3 border-bottom">
+                    <span class="fw-semibold">@Model.SelectedCourse.Title</span>
+                    <span class="text-muted"> — based on your @totalDocs uploaded document@(totalDocs == 1 ? "" : "s")</span>
+                </div>
+
+                <div id="chatWindow" class="p-3" style="height: 420px; overflow-y: auto;">
+                    @if (!Model.ChatHistory.Any())
+                    {
+                        <p class="text-muted small mb-0" id="chatEmptyState">Ask a question about this course's documents to get started.</p>
+                    }
+                    else
+                    {
+                        foreach (var message in Model.ChatHistory)
+                        {
+                            if (message.Role == "assistant")
+                            {
+                                <div class="d-flex justify-content-start mb-2">
+                                    <div class="bg-light rounded p-2" style="max-width: 75%;">
+                                        <div>@message.Content</div>
+                                        @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
+                                        {
+                                            <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="d-flex justify-content-end mb-2">
+                                    <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+
+                <div class="p-3 border-top">
+                    <form id="chatForm" class="d-flex gap-2" autocomplete="off">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="courseId" value="@Model.SelectedCourseId" />
+                        <label for="chatQuestion" class="visually-hidden">Question</label>
+                        <input type="text" name="question" id="chatQuestion" class="form-control" placeholder="Ask a question about @Model.SelectedCourse.Title..." required />
+                        <button type="submit" class="btn btn-primary" id="chatSendButton">Send</button>
+                    </form>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@* Dots use the app's accent colour (same var palettes.css drives every
+   theme from) so the indicator matches whichever palette is active. *@
+<style>
+    .typing-dots span {
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        margin-right: 4px;
+        border-radius: 50%;
+        background-color: var(--accent);
+        opacity: 0.3;
+        animation: typing-pulse 1.4s ease-in-out infinite both;
+    }
+
+    .typing-dots span:last-child {
+        margin-right: 0;
+    }
+
+    .typing-dots span:nth-child(2) {
+        animation-delay: 0.2s;
+    }
+
+    .typing-dots span:nth-child(3) {
+        animation-delay: 0.4s;
+    }
+
+    @@keyframes typing-pulse {
+        0%, 80%, 100% {
+            opacity: 0.3;
+            transform: scale(0.8);
+        }
+
+        40% {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+</style>
 
 @section Scripts {
     <script>
@@ -93,7 +162,11 @@ else
             var questionInput = document.getElementById('chatQuestion');
             var emptyState = document.getElementById('chatEmptyState');
 
-            function appendMessage(role, content, source) {
+            // Creates an empty bubble and appends it, returning the bubble
+            // element itself so its content can be filled in now (appendMessage)
+            // or later (the "Thinking..." placeholder, filled in once the
+            // response arrives instead of getting a second bubble appended).
+            function appendRow(role) {
                 if (emptyState) {
                     emptyState.remove();
                     emptyState = null;
@@ -106,20 +179,44 @@ else
                 bubble.className = (role === 'assistant' ? 'bg-light' : 'bg-primary text-white') + ' rounded p-2';
                 bubble.style.maxWidth = '75%';
 
+                row.appendChild(bubble);
+                chatWindow.appendChild(row);
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+
+                return bubble;
+            }
+
+            function setBubbleContent(bubble, content, source) {
+                bubble.innerHTML = '';
+
                 var text = document.createElement('div');
                 text.textContent = content;
                 bubble.appendChild(text);
 
-                if (role === 'assistant' && source) {
+                if (source) {
                     var sourceLine = document.createElement('div');
                     sourceLine.className = 'small text-muted mt-1';
                     sourceLine.textContent = 'Source: ' + source;
                     bubble.appendChild(sourceLine);
                 }
 
-                row.appendChild(bubble);
-                chatWindow.appendChild(row);
                 chatWindow.scrollTop = chatWindow.scrollHeight;
+            }
+
+            function appendMessage(role, content, source) {
+                setBubbleContent(appendRow(role), content, source);
+            }
+
+            function appendThinkingBubble() {
+                var bubble = appendRow('assistant');
+
+                var dots = document.createElement('div');
+                dots.className = 'typing-dots';
+                dots.innerHTML = '<span></span><span></span><span></span>';
+                bubble.appendChild(dots);
+
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+                return bubble;
             }
 
             chatForm.addEventListener('submit', function (event) {
@@ -131,10 +228,14 @@ else
                 }
 
                 appendMessage('user', question, null);
+                var formData = new FormData(chatForm);
                 questionInput.value = '';
                 sendButton.disabled = true;
 
-                var formData = new FormData(chatForm);
+                // Shown the instant Send is clicked, not once the response
+                // arrives - the same bubble is then filled in below rather
+                // than a second one being appended underneath it.
+                var thinkingBubble = appendThinkingBubble();
 
                 fetch(window.location.pathname + '?handler=Ask', {
                     method: 'POST',
@@ -147,10 +248,10 @@ else
                         return response.json();
                     })
                     .then(function (result) {
-                        appendMessage('assistant', result.answer, result.sourceDocument);
+                        setBubbleContent(thinkingBubble, result.answer, result.sourceDocument);
                     })
                     .catch(function () {
-                        appendMessage('assistant', "Something went wrong sending that question. Please try again.", null);
+                        setBubbleContent(thinkingBubble, "Something went wrong sending that question. Please try again.", null);
                     })
                     .finally(function () {
                         sendButton.disabled = false;

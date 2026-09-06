@@ -22,11 +22,17 @@ public class IndexModel(
     private readonly UserManager<ApplicationUser> _userManager = userManager;
     private readonly TutorChatService _tutorChatService = tutorChatService;
 
-    public List<Course> Courses { get; set; } = new();
+    public List<Course> Courses { get; set; } = [];
 
     public int? SelectedCourseId { get; set; }
 
-    public List<ChatMessage> ChatHistory { get; set; } = new();
+    public Course? SelectedCourse { get; set; }
+
+    public List<ChatMessage> ChatHistory { get; set; } = [];
+
+    /// <summary>Total assessments across every one of this user's courses,
+    /// shown as the sidebar's headline stat.</summary>
+    public int TotalAssessmentsTracked { get; set; }
 
     public async Task<IActionResult> OnGetAsync(int? courseId)
     {
@@ -36,10 +42,16 @@ public class IndexModel(
             return NotFound();
         }
 
+        // Assessments/Documents are included here (not just when a course is
+        // selected) because the sidebar shows a per-course document count.
         Courses = await _db.Courses
+            .Include(c => c.Assessments)
+                .ThenInclude(a => a.Documents)
             .Where(c => c.UserId == user.Id)
             .OrderBy(c => c.Title)
             .ToListAsync();
+
+        TotalAssessmentsTracked = Courses.Sum(c => c.Assessments.Count);
 
         if (courseId.HasValue)
         {
@@ -53,6 +65,7 @@ public class IndexModel(
             }
 
             SelectedCourseId = course.Id;
+            SelectedCourse = course;
             ChatHistory = await _db.ChatMessages
                 .Where(m => m.UserId == user.Id && m.CourseId == course.Id)
                 .OrderBy(m => m.SentUtc)

@@ -54,28 +54,33 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
 
         var payload = new
         {
-            model = _options.Model,
-            messages = new[]
+            systemInstruction = new
             {
-                new
+                parts = new[]
                 {
-                    role = "system",
-                    content = "You are a course tutor. Answer the student's question using ONLY the supplied " +
-                              "document excerpts - never your own general knowledge, even if you know the answer. " +
-                              "If the excerpts don't contain anything relevant, say so plainly instead of guessing. " +
-                              "Return only valid JSON with keys \"answer\" and \"source\". \"answer\" is your reply " +
-                              "as plain text. \"source\" is the exact source filename the answer was drawn from, " +
-                              "or null if you found nothing relevant."
-                },
-                new { role = "user", content = prompt }
+                    new
+                    {
+                        text = "You are a course tutor. Answer the student's question using ONLY the supplied " +
+                               "document excerpts - never your own general knowledge, even if you know the answer. " +
+                               "If the excerpts don't contain anything relevant, say so plainly instead of guessing. " +
+                               "Return only valid JSON with keys \"answer\" and \"source\". \"answer\" is your reply " +
+                               "as plain text. \"source\" is the exact source filename the answer was drawn from, " +
+                               "or null if you found nothing relevant."
+                    }
+                }
             },
-            temperature = 0.1
+            contents = new[]
+            {
+                new { role = "user", parts = new[] { new { text = prompt } } }
+            },
+            generationConfig = new { temperature = 0.1 }
         };
 
-        _httpClient.DefaultRequestHeaders.Remove("Authorization");
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_options.ApiKey}");
+        _httpClient.DefaultRequestHeaders.Remove("x-goog-api-key");
+        _httpClient.DefaultRequestHeaders.Add("x-goog-api-key", _options.ApiKey);
 
-        using var response = await _httpClient.PostAsJsonAsync(_options.Endpoint, payload, cancellationToken);
+        var requestUri = $"{_options.Endpoint}/{_options.Model}:generateContent";
+        using var response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return new TutorChatResult($"The AI tutor request failed (HTTP {(int)response.StatusCode}). Please try again.", null);
@@ -85,10 +90,10 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
         var json = JsonDocument.Parse(responseJson);
         var root = json.RootElement;
 
-        if (root.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
+        if (root.TryGetProperty("candidates", out var candidates) && candidates.ValueKind == JsonValueKind.Array && candidates.GetArrayLength() > 0)
         {
-            var message = choices[0].GetProperty("message");
-            var assistantText = message.GetProperty("content").GetString();
+            var parts = candidates[0].GetProperty("content").GetProperty("parts");
+            var assistantText = parts.GetArrayLength() > 0 ? parts[0].GetProperty("text").GetString() : null;
 
             if (!string.IsNullOrWhiteSpace(assistantText))
             {

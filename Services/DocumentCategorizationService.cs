@@ -51,19 +51,25 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
         var prompt = BuildPrompt(normalizedText);
         var payload = new
         {
-            model = _options.Model,
-            messages = new[]
+            systemInstruction = new
             {
-                new { role = "system", content = "Return only valid JSON with keys category and dueDate. category must be one of Coursework, Quiz, Report, Test. dueDate must be null if no due date is mentioned, otherwise ISO date string YYYY-MM-DD." },
-                new { role = "user", content = prompt }
+                parts = new[]
+                {
+                    new { text = "Return only valid JSON with keys category and dueDate. category must be one of Coursework, Quiz, Report, Test. dueDate must be null if no due date is mentioned, otherwise ISO date string YYYY-MM-DD." }
+                }
             },
-            temperature = 0.1
+            contents = new[]
+            {
+                new { role = "user", parts = new[] { new { text = prompt } } }
+            },
+            generationConfig = new { temperature = 0.1 }
         };
 
-        _httpClient.DefaultRequestHeaders.Remove("Authorization");
-        _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {_options.ApiKey}");
+        _httpClient.DefaultRequestHeaders.Remove("x-goog-api-key");
+        _httpClient.DefaultRequestHeaders.Add("x-goog-api-key", _options.ApiKey);
 
-        using var response = await _httpClient.PostAsJsonAsync(_options.Endpoint, payload, cancellationToken);
+        var requestUri = $"{_options.Endpoint}/{_options.Model}:generateContent";
+        using var response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
             return new AssessmentCategorizationResult(
@@ -79,10 +85,10 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
         var json = JsonDocument.Parse(responseJson);
         var content = json.RootElement;
 
-        if (content.TryGetProperty("choices", out var choices) && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
+        if (content.TryGetProperty("candidates", out var candidates) && candidates.ValueKind == JsonValueKind.Array && candidates.GetArrayLength() > 0)
         {
-            var message = choices[0].GetProperty("message");
-            var assistantText = message.GetProperty("content").GetString();
+            var parts = candidates[0].GetProperty("content").GetProperty("parts");
+            var assistantText = parts.GetArrayLength() > 0 ? parts[0].GetProperty("text").GetString() : null;
 
             if (!string.IsNullOrWhiteSpace(assistantText))
             {
@@ -211,9 +217,11 @@ public sealed class DocumentCategorizationOptions
 {
     public string ApiKey { get; set; } = string.Empty;
 
-    public string Endpoint { get; set; } = "https://api.openai.com/v1/chat/completions";
+    /// <summary>Base URL for the Gemini generateContent API, without the trailing
+    /// "/{model}:generateContent" - each request appends that using <see cref="Model"/>.</summary>
+    public string Endpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
 
-    public string Model { get; set; } = "gpt-4o-mini";
+    public string Model { get; set; } = "gemini-3.6-flash";
 }
 
 public sealed record AssessmentCategorizationResult(
