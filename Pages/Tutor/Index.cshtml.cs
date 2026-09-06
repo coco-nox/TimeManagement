@@ -30,11 +30,26 @@ public class IndexModel(
 
     public List<ChatMessage> ChatHistory { get; set; } = [];
 
+    /// <summary>True when the page is showing archived conversations for the
+    /// selected course instead of the live chat.</summary>
+    public bool ShowArchive { get; set; }
+
+    /// <summary>One row per archived conversation, newest-archived first.
+    /// Populated only when <see cref="ShowArchive"/> is true and no specific
+    /// conversation is being viewed.</summary>
+    public List<ArchivedConversationSummary> ArchivedConversations { get; set; } = [];
+
+    /// <summary>Set when viewing one specific archived conversation's
+    /// transcript (read-only - archived conversations can't be added to).</summary>
+    public Guid? ViewingConversationId { get; set; }
+
+    public List<ChatMessage> ViewingConversationMessages { get; set; } = [];
+
     /// <summary>Total assessments across every one of this user's courses,
     /// shown as the sidebar's headline stat.</summary>
     public int TotalAssessmentsTracked { get; set; }
 
-    public async Task<IActionResult> OnGetAsync(int? courseId)
+    public async Task<IActionResult> OnGetAsync(int? courseId, bool archive = false, Guid? conversationId = null)
     {
         var user = await _userManager.GetUserAsync(User);
         if (user == null)
@@ -66,14 +81,52 @@ public class IndexModel(
 
             SelectedCourseId = course.Id;
             SelectedCourse = course;
+            ShowArchive = archive;
 
-            // Only the active (unarchived) conversation shows in the chat
-            // window - archiving is what keeps this list from growing
-            // forever without deleting the older history outright.
-            ChatHistory = await _db.ChatMessages
-                .Where(m => m.UserId == user.Id && m.CourseId == course.Id && m.ArchivedUtc == null)
-                .OrderBy(m => m.SentUtc)
-                .ToListAsync();
+            if (ShowArchive)
+            {
+                if (conversationId.HasValue)
+                {
+                    ViewingConversationId = conversationId;
+                    ViewingConversationMessages = await _db.ChatMessages
+                        .Where(m => m.UserId == user.Id && m.CourseId == course.Id
+                            && m.ConversationId == conversationId.Value && m.ArchivedUtc != null)
+                        .OrderBy(m => m.SentUtc)
+                        .ToListAsync();
+                }
+                else
+                {
+                    // Grouped in memory rather than in the database query -
+                    // simpler than translating "first user message per
+                    // group" into SQL, and a course's archived history is
+                    // never large enough for that to matter.
+                    var archivedMessages = await _db.ChatMessages
+                        .Where(m => m.UserId == user.Id && m.CourseId == course.Id && m.ArchivedUtc != null)
+                        .OrderBy(m => m.SentUtc)
+                        .ToListAsync();
+
+                    ArchivedConversations = archivedMessages
+                        .GroupBy(m => m.ConversationId)
+                        .Select(g => new ArchivedConversationSummary(
+                            g.Key,
+                            g.Min(m => m.SentUtc),
+                            g.Max(m => m.ArchivedUtc!.Value),
+                            g.Count(),
+                            g.FirstOrDefault(m => m.Role == "user")?.Content))
+                        .OrderByDescending(s => s.ArchivedUtc)
+                        .ToList();
+                }
+            }
+            else
+            {
+                // Only the active (unarchived) conversation shows in the chat
+                // window - archiving is what keeps this list from growing
+                // forever without deleting the older history outright.
+                ChatHistory = await _db.ChatMessages
+                    .Where(m => m.UserId == user.Id && m.CourseId == course.Id && m.ArchivedUtc == null)
+                    .OrderBy(m => m.SentUtc)
+                    .ToListAsync();
+            }
         }
 
         return Page();
@@ -224,3 +277,12 @@ public class IndexModel(
         return activeConversationId == Guid.Empty ? Guid.NewGuid() : activeConversationId;
     }
 }
+
+/// <summary>One row in the "Archived" list: enough to identify a past
+/// conversation without loading its full transcript.</summary>
+public sealed record ArchivedConversationSummary(
+    Guid ConversationId,
+    DateTime StartedUtc,
+    DateTime ArchivedUtc,
+    int MessageCount,
+    string? FirstQuestion);

@@ -60,68 +60,150 @@
         {
             var totalDocs = Model.SelectedCourse.Assessments.Sum(a => a.Documents.Count);
             <div class="card">
-                <div class="p-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div>
-                        <span class="fw-semibold">@Model.SelectedCourse.Title</span>
-                        <span class="text-muted"> — based on your @totalDocs uploaded document@(totalDocs == 1 ? "" : "s")</span>
+                <div class="p-3 border-bottom">
+                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div>
+                            <span class="fw-semibold">@Model.SelectedCourse.Title</span>
+                            <span class="text-muted"> — based on your @totalDocs uploaded document@(totalDocs == 1 ? "" : "s")</span>
+                        </div>
+
+                        @* Nothing to archive/restart in a brand new, empty conversation. *@
+                        @if (!Model.ShowArchive && Model.ChatHistory.Any())
+                        {
+                            <div class="d-flex gap-2">
+                                <form method="post" asp-page-handler="ArchiveConversation" asp-route-courseId="@Model.SelectedCourseId"
+                                      onsubmit="return confirm('Archive this conversation and start a new one? The old messages are kept, just hidden from view.');">
+                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Archive &amp; start new</button>
+                                </form>
+                                <form method="post" asp-page-handler="DeleteConversation" asp-route-courseId="@Model.SelectedCourseId"
+                                      onsubmit="return confirm('Delete this conversation? This can\'t be undone.');">
+                                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete conversation</button>
+                                </form>
+                            </div>
+                        }
                     </div>
 
-                    @* Nothing to archive/restart in a brand new, empty conversation. *@
-                    @if (Model.ChatHistory.Any())
-                    {
-                        <div class="d-flex gap-2">
-                            <form method="post" asp-page-handler="ArchiveConversation" asp-route-courseId="@Model.SelectedCourseId"
-                                  onsubmit="return confirm('Archive this conversation and start a new one? The old messages are kept, just hidden from view.');">
-                                <button type="submit" class="btn btn-outline-secondary btn-sm">Archive &amp; start new</button>
-                            </form>
-                            <form method="post" asp-page-handler="DeleteConversation" asp-route-courseId="@Model.SelectedCourseId"
-                                  onsubmit="return confirm('Delete this conversation? This can\'t be undone.');">
-                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete conversation</button>
-                            </form>
-                        </div>
-                    }
+                    @* Always available under the course name, whether or not there's an
+                       active conversation right now, so past conversations stay reachable. *@
+                    <div class="mt-1">
+                        @if (Model.ShowArchive)
+                        {
+                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" class="small">&larr; Back to chat</a>
+                        }
+                        else
+                        {
+                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-archive="true" class="small">Archived conversations</a>
+                        }
+                    </div>
                 </div>
 
-                <div id="chatWindow" class="p-3" style="height: 420px; overflow-y: auto;">
-                    @if (!Model.ChatHistory.Any())
+                @if (Model.ShowArchive)
+                {
+                    if (Model.ViewingConversationId.HasValue)
                     {
-                        <p class="text-muted small mb-0" id="chatEmptyState">Ask a question about this course's documents to get started.</p>
+                        <div class="p-3" style="height: 420px; overflow-y: auto;">
+                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-archive="true" class="small d-inline-block mb-3">&larr; Back to archived conversations</a>
+
+                            @foreach (var message in Model.ViewingConversationMessages)
+                            {
+                                if (message.Role == "assistant")
+                                {
+                                    <div class="d-flex justify-content-start mb-2">
+                                        <div class="bg-light rounded p-2" style="max-width: 75%;">
+                                            <div>@message.Content</div>
+                                            @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
+                                            {
+                                                <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="d-flex justify-content-end mb-2">
+                                        <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
+                                    </div>
+                                }
+                            }
+                        </div>
                     }
                     else
                     {
-                        foreach (var message in Model.ChatHistory)
-                        {
-                            if (message.Role == "assistant")
+                        <div class="p-3">
+                            @if (!Model.ArchivedConversations.Any())
                             {
-                                <div class="d-flex justify-content-start mb-2">
-                                    <div class="bg-light rounded p-2" style="max-width: 75%;">
-                                        <div>@message.Content</div>
-                                        @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
-                                        {
-                                            <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
-                                        }
-                                    </div>
-                                </div>
+                                <p class="text-muted small mb-0">No archived conversations yet - use "Archive &amp; start new" from the chat to keep one for later without deleting it.</p>
                             }
                             else
                             {
-                                <div class="d-flex justify-content-end mb-2">
-                                    <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
+                                <div class="list-group">
+                                    @foreach (var conversation in Model.ArchivedConversations)
+                                    {
+                                        var preview = string.IsNullOrWhiteSpace(conversation.FirstQuestion)
+                                            ? "Conversation"
+                                            : conversation.FirstQuestion.Length > 80 ? conversation.FirstQuestion[..80] + "…" : conversation.FirstQuestion;
+
+                                        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-archive="true" asp-route-conversationId="@conversation.ConversationId"
+                                           class="list-group-item list-group-item-action">
+                                            <div class="d-flex justify-content-between align-items-start gap-3">
+                                                <div>
+                                                    <div class="fw-semibold">@preview</div>
+                                                    <div class="small text-muted">
+                                                        Started @conversation.StartedUtc.ToString("d MMM yyyy") &middot; archived @conversation.ArchivedUtc.ToString("d MMM yyyy")
+                                                    </div>
+                                                </div>
+                                                <span class="badge text-bg-light text-nowrap">@conversation.MessageCount message@(conversation.MessageCount == 1 ? "" : "s")</span>
+                                            </div>
+                                        </a>
+                                    }
                                 </div>
                             }
-                        }
+                        </div>
                     }
-                </div>
+                }
+                else
+                {
+                    <div id="chatWindow" class="p-3" style="height: 420px; overflow-y: auto;">
+                        @if (!Model.ChatHistory.Any())
+                        {
+                            <p class="text-muted small mb-0" id="chatEmptyState">Ask a question about this course's documents to get started.</p>
+                        }
+                        else
+                        {
+                            foreach (var message in Model.ChatHistory)
+                            {
+                                if (message.Role == "assistant")
+                                {
+                                    <div class="d-flex justify-content-start mb-2">
+                                        <div class="bg-light rounded p-2" style="max-width: 75%;">
+                                            <div>@message.Content</div>
+                                            @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
+                                            {
+                                                <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="d-flex justify-content-end mb-2">
+                                        <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
+                                    </div>
+                                }
+                            }
+                        }
+                    </div>
 
-                <div class="p-3 border-top">
-                    <form id="chatForm" class="d-flex gap-2" autocomplete="off">
-                        @Html.AntiForgeryToken()
-                        <input type="hidden" name="courseId" value="@Model.SelectedCourseId" />
-                        <label for="chatQuestion" class="visually-hidden">Question</label>
-                        <input type="text" name="question" id="chatQuestion" class="form-control" placeholder="Ask a question about @Model.SelectedCourse.Title..." required />
-                        <button type="submit" class="btn btn-primary" id="chatSendButton">Send</button>
-                    </form>
-                </div>
+                    <div class="p-3 border-top">
+                        <form id="chatForm" class="d-flex gap-2" autocomplete="off">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="courseId" value="@Model.SelectedCourseId" />
+                            <label for="chatQuestion" class="visually-hidden">Question</label>
+                            <input type="text" name="question" id="chatQuestion" class="form-control" placeholder="Ask a question about @Model.SelectedCourse.Title..." required />
+                            <button type="submit" class="btn btn-primary" id="chatSendButton">Send</button>
+                        </form>
+                    </div>
+                }
             </div>
         }
     </div>
