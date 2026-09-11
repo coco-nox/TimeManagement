@@ -21,6 +21,24 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
     [GeneratedRegex("^```(json|JSON)?\\s*|\\s*```$", RegexOptions.Singleline)]
     private static partial Regex JsonFenceRemover();
 
+    // Looks for a due-date-style label ("Due date", "Deadline", "Submission
+    // date", "Hand-in date", ...) immediately followed by a date in one of a
+    // handful of common written formats. This runs independently of the AI
+    // call so a due date can still be found when there's no API key
+    // configured, the AI request fails, or the AI just doesn't notice it -
+    // see CategorizeAsync for where each of those falls back to it.
+    [GeneratedRegex(
+        "(?:due\\s*date|due|deadline|submission\\s*date|hand[\\s-]?in\\s*date)\\s*(?:is|:|-)?\\s*" +
+        "(?<date>\\d{1,2}(?:st|nd|rd|th)?\\s+[A-Za-z]+\\s+\\d{4}" +
+        "|[A-Za-z]+\\s+\\d{1,2}(?:st|nd|rd|th)?,?\\s+\\d{4}" +
+        "|\\d{4}-\\d{1,2}-\\d{1,2}" +
+        "|\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]\\d{2,4})",
+        RegexOptions.IgnoreCase)]
+    private static partial Regex DueDateLabelPattern();
+
+    [GeneratedRegex("(?<=\\d)(st|nd|rd|th)", RegexOptions.IgnoreCase)]
+    private static partial Regex OrdinalSuffixRemover();
+
     /// <summary>
     /// Main entry point, called once per uploaded document. Tries the AI
     /// first and falls back to simple keyword matching whenever the AI
@@ -31,6 +49,7 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
     {
         var normalizedText = string.IsNullOrWhiteSpace(extractedText) ? string.Empty : extractedText.Trim();
         var keywordCategory = InferCategoryFromKeywords(normalizedText);
+        var regexDueDate = TryExtractDueDateFromText(normalizedText);
 
         // No text to work with (extraction failed or produced nothing) -
         // keyword matching has nothing to search either, so skip straight
@@ -47,13 +66,14 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
         }
 
         // No API key configured - same fallback, but text was available so
-        // the keyword pass had something real to work with.
+        // the keyword pass (and the due-date regex below) had something
+        // real to work with.
         if (string.IsNullOrWhiteSpace(_options.ApiKey))
         {
             return new AssessmentCategorizationResult(
                 Category: keywordCategory ?? AssessmentCategory.Coursework,
-                DueDate: null,
-                WasDetected: keywordCategory != null,
+                DueDate: regexDueDate,
+                WasDetected: keywordCategory != null || regexDueDate != null,
                 Reason: keywordCategory != null
                     ? "AI key missing; used keyword fallback classification."
                     : "No AI key configured or no text available for analysis.");
@@ -87,8 +107,8 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
         {
             return new AssessmentCategorizationResult(
                 Category: keywordCategory ?? AssessmentCategory.Coursework,
-                DueDate: null,
-                WasDetected: keywordCategory != null,
+                DueDate: regexDueDate,
+                WasDetected: keywordCategory != null || regexDueDate != null,
                 Reason: keywordCategory != null
                     ? "AI categorization failed; used keyword fallback classification."
                     : $"AI categorization failed with HTTP {(int)response.StatusCode}.");
@@ -111,6 +131,20 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
                 var parsed = ParseResponse(assistantText);
                 if (parsed != null)
                 {
+                    // The AI missed a due date the regex pass found in the
+                    // text (a common gap - see BuildPrompt's 5,000-character
+                    // cap, or the AI simply not recognising the wording used).
+                    // Trust the regex hit rather than leaving it blank.
+                    if (parsed.DueDate == null && regexDueDate != null)
+                    {
+                        return parsed with
+                        {
+                            DueDate = regexDueDate,
+                            WasDetected = true,
+                            Reason = parsed.Reason + " A due date was found by pattern matching instead."
+                        };
+                    }
+
                     return parsed;
                 }
             }
@@ -118,11 +152,44 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
 
         return new AssessmentCategorizationResult(
             Category: keywordCategory ?? AssessmentCategory.Coursework,
-            DueDate: null,
-            WasDetected: keywordCategory != null,
+            DueDate: regexDueDate,
+            WasDetected: keywordCategory != null || regexDueDate != null,
             Reason: keywordCategory != null
                 ? "The AI response did not contain a usable classification, so keyword matching was used instead."
                 : "The AI response did not contain a usable classification.");
+    }
+
+    // Deterministic due-date scanner: finds the first "Due date: <date>"
+    // style label in the text and parses whatever date follows it. Runs
+    // regardless of whether the AI is used, so a due date the AI doesn't
+    // catch (or can't be asked about, with no API key configured) still has
+    // a chance of being found - see CategorizeAsync for how the two are combined.
+    private static DateTime? TryExtractDueDateFromText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var match = DueDateLabelPattern().Match(text);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var dateText = OrdinalSuffixRemover().Replace(match.Groups["date"].Value, string.Empty).Trim();
+
+        if (DateTime.TryParseExact(dateText, "yyyy-M-d", CultureInfo.InvariantCulture, DateTimeStyles.None, out var isoDate))
+        {
+            return isoDate.Date;
+        }
+
+        if (DateTime.TryParse(dateText, CultureInfo.InvariantCulture, DateTimeStyles.AllowWhiteSpaces, out var parsedDate))
+        {
+            return parsedDate.Date;
+        }
+
+        return null;
     }
 
     // Fallback classifier for when the AI can't be used: looks for a handful

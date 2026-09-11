@@ -1,10 +1,10 @@
 @page
 @model TimeManagement.Pages.Courses.IndexModel
 @{
-    ViewData["Title"] = "Courses";
+    ViewData["Title"] = "Course";
 }
 
-<h1 class="h3 mb-1">Courses</h1>
+<h1 class="h3 mb-1">Course</h1>
 <p class="text-muted">Create course folders, upload assessment files, and track progress on each one.</p>
 
 @if (Model.StatusMessage != null)
@@ -33,9 +33,12 @@
                 @foreach (var course in Model.Courses)
                 {
                     var docCount = course.Assessments.Sum(a => a.Documents.Count);
-                    <a asp-page="/Courses/Index" asp-route-courseId="@course.Id"
+                    <a asp-page="/Courses/Index" asp-route-courseId="@course.Id" asp-route-tab="@Model.ActiveTab"
                        class="list-group-item list-group-item-action @(Model.SelectedCourseId == course.Id ? "active" : "")">
-                        <div class="fw-semibold">@course.Title</div>
+                        <div class="d-flex align-items-center gap-2">
+                            <span style="width: 0.7rem; height: 0.7rem; border-radius: 50%; background-color: @course.ColourHex; flex-shrink: 0;"></span>
+                            <div class="fw-semibold">@course.Title</div>
+                        </div>
                         <div class="small @(Model.SelectedCourseId == course.Id ? "" : "text-muted")">@docCount document@(docCount == 1 ? "" : "s")</div>
                     </a>
                 }
@@ -59,152 +62,200 @@
         {
             var course = Model.SelectedCourse;
 
-            <div class="card mb-3">
-                <div class="card-body">
-                    <div class="small text-muted text-uppercase fw-semibold mb-2">Upload a document</div>
-                    @* The category picked here decides both which section the assessment
-                       lands in below and which on-disk subfolder it's saved to (see
-                       GetCategoryFolder in the code-behind); the due date is still
-                       detected automatically from the file's text where possible. *@
-                    <form method="post" asp-page-handler="Upload" asp-route-courseId="@course.Id" enctype="multipart/form-data" class="row g-2 align-items-center">
-                        <div class="col">
-                            <label for="uploadFile" class="visually-hidden">Choose file</label>
-                            <input type="file" id="uploadFile" name="UploadedFile" class="form-control" accept=".pdf,.docx" />
-                        </div>
-                        <div class="col-auto">
-                            <label for="uploadCategory" class="visually-hidden">Assessment type</label>
-                            <select id="uploadCategory" name="UploadCategory" class="form-select">
-                                @foreach (var category in Enum.GetValues<AssessmentCategory>())
+            <ul class="nav nav-tabs mb-3">
+                <li class="nav-item">
+                    <a asp-page="/Courses/Index" asp-route-courseId="@course.Id" asp-route-tab="upload"
+                       class="nav-link @(Model.ActiveTab == "upload" ? "active" : "")">Upload</a>
+                </li>
+                <li class="nav-item">
+                    <a asp-page="/Courses/Index" asp-route-courseId="@course.Id" asp-route-tab="preferences"
+                       class="nav-link @(Model.ActiveTab == "preferences" ? "active" : "")">Preferences</a>
+                </li>
+            </ul>
+
+            @if (Model.ActiveTab == "preferences")
+            {
+                <div class="card">
+                    <div class="card-body">
+                        <div class="fw-semibold mb-1">Assessment preferences</div>
+                        <p class="text-muted small">Change an assessment's category, or remove one entirely.</p>
+
+                        @if (!course.Assessments.Any())
+                        {
+                            <p class="text-muted mb-0">No assessments uploaded yet.</p>
+                        }
+                        else
+                        {
+                            var assessments = course.Assessments
+                                .OrderBy(a => a.Title)
+                                .ToList();
+
+                            <div class="list-group list-group-flush">
+                                @foreach (var assessment in assessments)
                                 {
-                                    <option value="@category">@category</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="col-auto">
-                            <button type="submit" class="btn btn-primary">Upload</button>
-                        </div>
-                    </form>
-                    <p class="text-muted small mt-2 mb-0">PDF and Word (.docx) files, up to 20 MB.</p>
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-body">
-                    <div class="fw-semibold">@course.Title assessments</div>
-                    <p class="text-muted small">
-                        Progress here tracks time remaining until the due date — a stand-in until real
-                        checklists (reports) and quiz results (tests) are built.
-                    </p>
-
-                    @if (!course.Assessments.Any())
-                    {
-                        <p class="text-muted mb-0">No assessments uploaded yet.</p>
-                    }
-                    else
-                    {
-                        var assessments = course.Assessments
-                            .OrderBy(a => a.DueDate ?? DateTime.MaxValue)
-                            .ThenBy(a => a.Title)
-                            .ToList();
-
-                        <div class="list-group list-group-flush">
-                            @foreach (var assessment in assessments)
-                            {
-                                var progress = Model.GetProgress(assessment);
-
-                                <div class="list-group-item px-0 py-3">
-                                    <div class="fw-semibold">
-                                        @assessment.Title
-                                        <span class="badge text-bg-light text-uppercase ms-1">@assessment.Category</span>
-                                    </div>
-                                    <div class="small text-muted">
-                                        @if (assessment.DueDate.HasValue)
-                                        {
-                                            <span>Due @assessment.DueDate.Value.ToString("d MMM yyyy")</span>
-                                        }
-                                        else if (assessment.Category == AssessmentCategory.Coursework)
-                                        {
-                                            <span>No fixed due date</span>
-                                        }
-                                        else
-                                        {
-                                            <span>No due date detected</span>
-                                        }
-                                    </div>
-
-                                    @if (progress.Percent.HasValue)
-                                    {
-                                        <div class="d-flex align-items-center gap-2 mt-2">
-                                            <div class="progress flex-grow-1" style="height: 0.5rem;">
-                                                <div class="progress-bar @progress.BarClass" style="width: @(progress.Percent)%"></div>
+                                    <div class="list-group-item px-0 py-3">
+                                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                            <div class="fw-semibold">
+                                                @assessment.Title
+                                                <span class="badge text-bg-light text-uppercase ms-1">@assessment.Category</span>
                                             </div>
-                                            <span class="small text-muted text-nowrap">@progress.Label</span>
+
+                                            <form method="post" asp-page-handler="UpdateAssessmentCategory" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id" class="d-flex align-items-center gap-2">
+                                                <label for="category-@assessment.Id" class="small text-muted mb-0">Type</label>
+                                                <select id="category-@assessment.Id" name="category" class="form-select form-select-sm w-auto">
+                                                    @foreach (var option in Enum.GetValues<AssessmentCategory>())
+                                                    {
+                                                        <option value="@option" selected="@(assessment.Category == option ? "selected" : null)">@option</option>
+                                                    }
+                                                </select>
+                                                <button type="submit" class="btn btn-outline-secondary btn-sm">Move</button>
+                                            </form>
                                         </div>
-                                    }
-                                    else if (assessment.Category != AssessmentCategory.Coursework)
-                                    {
-                                        <div class="mt-2 alert alert-warning py-2 px-3 mb-0" role="alert">
-                                            @progress.Label — update as soon as possible.
-                                        </div>
-                                    }
-
-                                    <details class="mt-2">
-                                        <summary class="small text-muted" style="cursor: pointer;">Manage (change type, documents)</summary>
-
-                                        <form method="post" asp-page-handler="UpdateAssessmentCategory" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id" class="d-flex align-items-center gap-2 mt-2">
-                                            <label for="category-@assessment.Id" class="small text-muted mb-0">Type</label>
-                                            <select id="category-@assessment.Id" name="category" class="form-select form-select-sm w-auto">
-                                                @foreach (var option in Enum.GetValues<AssessmentCategory>())
-                                                {
-                                                    <option value="@option" selected="@(assessment.Category == option ? "selected" : null)">@option</option>
-                                                }
-                                            </select>
-                                            <button type="submit" class="btn btn-outline-secondary btn-sm">Move</button>
-                                        </form>
-
-                                        @if (assessment.Documents.Any())
-                                        {
-                                            <ul class="list-group list-group-flush mt-2">
-                                                @foreach (var document in assessment.Documents.OrderByDescending(d => d.UploadedUtc))
-                                                {
-                                                    <li class="list-group-item px-0">
-                                                        <div class="d-flex justify-content-between align-items-center gap-3">
-                                                            <div>
-                                                                <div class="small fw-semibold">@document.OriginalFileName</div>
-                                                                <div class="small text-muted">
-                                                                    Uploaded @document.UploadedUtc.ToString("d MMM yyyy")
-                                                                    @if (string.IsNullOrEmpty(document.ExtractedText))
-                                                                    {
-                                                                        <span>&middot; text not extracted</span>
-                                                                    }
-                                                                </div>
-                                                            </div>
-                                                            <form method="post" asp-page-handler="DeleteDocument" asp-route-courseId="@course.Id" asp-route-documentId="@document.Id"
-                                                                  onsubmit="return confirm('Delete this document?');">
-                                                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
-                                                            </form>
-                                                        </div>
-                                                    </li>
-                                                }
-                                            </ul>
-                                        }
-                                        else
-                                        {
-                                            <div class="mt-2 small text-muted">No documents uploaded for this assessment yet.</div>
-                                        }
 
                                         <form method="post" asp-page-handler="DeleteAssessment" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id"
-                                              class="mt-3 pt-2 border-top"
+                                              class="mt-2"
                                               onsubmit="return confirm('Delete this assessment and all @assessment.Documents.Count document(s) attached to it? This can\'t be undone.');">
                                             <button type="submit" class="btn btn-outline-danger btn-sm">Delete assessment</button>
                                         </form>
-                                    </details>
-                                </div>
-                            }
-                        </div>
-                    }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
                 </div>
-            </div>
+            }
+            else
+            {
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <div class="small text-muted text-uppercase fw-semibold mb-2">Upload a document</div>
+                        @* The category picked here decides both which section the assessment
+                           lands in below and which on-disk subfolder it's saved to (see
+                           GetCategoryFolder in the code-behind); the due date is still
+                           detected automatically from the file's text where possible. *@
+                        <form method="post" asp-page-handler="Upload" asp-route-courseId="@course.Id" enctype="multipart/form-data" class="row g-2 align-items-center">
+                            <div class="col">
+                                <label for="uploadFile" class="visually-hidden">Choose file</label>
+                                <input type="file" id="uploadFile" name="UploadedFile" class="form-control" accept=".pdf,.docx" />
+                            </div>
+                            <div class="col-auto">
+                                <label for="uploadCategory" class="visually-hidden">Assessment type</label>
+                                <select id="uploadCategory" name="UploadCategory" class="form-select">
+                                    @foreach (var category in Enum.GetValues<AssessmentCategory>())
+                                    {
+                                        <option value="@category">@category</option>
+                                    }
+                                </select>
+                            </div>
+                            <div class="col-auto">
+                                <button type="submit" class="btn btn-primary">Upload</button>
+                            </div>
+                        </form>
+                        <p class="text-muted small mt-2 mb-0">PDF and Word (.docx) files, up to 20 MB.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-body">
+                        <div class="fw-semibold">Uploaded documents</div>
+                        <p class="text-muted small">
+                            Progress here tracks time remaining until the due date — a stand-in until real
+                            checklists (reports) and quiz results (tests) are built.
+                        </p>
+
+                        @if (!course.Assessments.Any())
+                        {
+                            <p class="text-muted mb-0">No assessments uploaded yet.</p>
+                        }
+                        else
+                        {
+                            var assessments = course.Assessments
+                                .OrderBy(a => a.DueDate ?? DateTime.MaxValue)
+                                .ThenBy(a => a.Title)
+                                .ToList();
+
+                            <div class="list-group list-group-flush">
+                                @foreach (var assessment in assessments)
+                                {
+                                    var progress = Model.GetProgress(assessment);
+
+                                    <div class="list-group-item px-0 py-3">
+                                        <div class="fw-semibold">
+                                            @assessment.Title
+                                            <span class="badge text-bg-light text-uppercase ms-1">@assessment.Category</span>
+                                        </div>
+                                        <div class="small text-muted">
+                                            @if (assessment.DueDate.HasValue)
+                                            {
+                                                <span>Due @assessment.DueDate.Value.ToString("d MMM yyyy")</span>
+                                            }
+                                            else if (assessment.Category == AssessmentCategory.Coursework)
+                                            {
+                                                <span>No fixed due date</span>
+                                            }
+                                            else
+                                            {
+                                                <span>No due date detected</span>
+                                            }
+                                        </div>
+
+                                        @if (progress.Percent.HasValue)
+                                        {
+                                            <div class="d-flex align-items-center gap-2 mt-2">
+                                                <div class="progress flex-grow-1" style="height: 0.5rem;">
+                                                    <div class="progress-bar @progress.BarClass" style="width: @(progress.Percent)%"></div>
+                                                </div>
+                                                <span class="small text-muted text-nowrap">@progress.Label</span>
+                                            </div>
+                                        }
+                                        else if (assessment.Category != AssessmentCategory.Coursework)
+                                        {
+                                            <div class="mt-2 alert alert-warning py-2 px-3 mb-0" role="alert">
+                                                @progress.Label — update as soon as possible.
+                                            </div>
+                                        }
+
+                                        <details class="mt-2">
+                                            <summary class="small text-muted" style="cursor: pointer;">Documents (@assessment.Documents.Count)</summary>
+
+                                            @if (assessment.Documents.Any())
+                                            {
+                                                <ul class="list-group list-group-flush mt-2">
+                                                    @foreach (var document in assessment.Documents.OrderByDescending(d => d.UploadedUtc))
+                                                    {
+                                                        <li class="list-group-item px-0">
+                                                            <div class="d-flex justify-content-between align-items-center gap-3">
+                                                                <div>
+                                                                    <div class="small fw-semibold">@document.OriginalFileName</div>
+                                                                    <div class="small text-muted">
+                                                                        Uploaded @document.UploadedUtc.ToString("d MMM yyyy")
+                                                                        @if (string.IsNullOrEmpty(document.ExtractedText))
+                                                                        {
+                                                                            <span>&middot; text not extracted</span>
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                                <form method="post" asp-page-handler="DeleteDocument" asp-route-courseId="@course.Id" asp-route-documentId="@document.Id"
+                                                                      onsubmit="return confirm('Delete this document?');">
+                                                                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                                                </form>
+                                                            </div>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            }
+                                            else
+                                            {
+                                                <div class="mt-2 small text-muted">No documents uploaded for this assessment yet.</div>
+                                            }
+                                        </details>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
         }
         else if (Model.Courses.Any())
         {

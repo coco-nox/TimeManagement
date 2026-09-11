@@ -45,11 +45,16 @@ public class IndexModel(
     [BindProperty]
     public AssessmentCategory UploadCategory { get; set; } = AssessmentCategory.Coursework;
 
+    private static readonly string[] KnownTabs = ["upload", "preferences"];
+
     public List<Course> Courses { get; set; } = [];
 
     public int? SelectedCourseId { get; set; }
 
     public Course? SelectedCourse { get; set; }
+
+    /// <summary>Which of the two in-page tabs is showing: "upload" or "preferences".</summary>
+    public string ActiveTab { get; set; } = "upload";
 
     /// <summary>Total assessments across every one of this user's courses,
     /// shown as the sidebar's headline stat.</summary>
@@ -71,7 +76,7 @@ public class IndexModel(
         public string Title { get; set; } = string.Empty;
     }
 
-    public async Task<IActionResult> OnGetAsync(int? courseId)
+    public async Task<IActionResult> OnGetAsync(int? courseId, string tab = "upload")
     {
         var user = await _userManager.GetUserAsync(User);
         if (user == null)
@@ -79,8 +84,12 @@ public class IndexModel(
             return NotFound();
         }
 
+        ActiveTab = KnownTabs.Contains(tab) ? tab : "upload";
+
         Courses = await LoadCoursesAsync(user.Id);
-        TotalAssessmentsTracked = Courses.Sum(c => c.Assessments.Count);
+        // Only Report/Quiz/Test count as "tracked" - Coursework doesn't have
+        // the checklist/quiz/report machinery the tracker exists to reflect.
+        TotalAssessmentsTracked = Courses.Sum(c => c.Assessments.Count(a => a.Category != AssessmentCategory.Coursework));
 
         if (courseId.HasValue)
         {
@@ -111,15 +120,24 @@ public class IndexModel(
         if (!ModelState.IsValid)
         {
             Courses = await LoadCoursesAsync(user.Id);
-            TotalAssessmentsTracked = Courses.Sum(c => c.Assessments.Count);
+            // Only Report/Quiz/Test count as "tracked" - Coursework doesn't have
+            // the checklist/quiz/report machinery the tracker exists to reflect.
+            TotalAssessmentsTracked = Courses.Sum(c => c.Assessments.Count(a => a.Category != AssessmentCategory.Coursework));
             return Page();
         }
+
+        // Rotates through the standard folder colours by how many courses
+        // this user already has, so a new course doesn't default to the
+        // same colour as an existing one until the set wraps around.
+        var existingCourseCount = await _db.Courses.CountAsync(c => c.UserId == user.Id);
+        var colour = FolderColours.All[existingCourseCount % FolderColours.All.Count].Hex;
 
         var course = new Course
         {
             UserId = user.Id,
             Title = Input.Title.Trim(),
-            CreatedUtc = DateTime.UtcNow
+            CreatedUtc = DateTime.UtcNow,
+            ColourHex = colour
         };
 
         _db.Courses.Add(course);
@@ -142,20 +160,20 @@ public class IndexModel(
         if (UploadedFile == null || UploadedFile.Length == 0)
         {
             ErrorMessage = "Please choose a file to upload.";
-            return RedirectToPage(new { courseId });
+            return RedirectToPage(new { courseId, tab = "upload" });
         }
 
         var extension = Path.GetExtension(UploadedFile.FileName).ToLowerInvariant();
         if (!AllowedExtensions.TryGetValue(extension, out var contentType))
         {
             ErrorMessage = "Only PDF and Word (.docx) files are supported.";
-            return RedirectToPage(new { courseId });
+            return RedirectToPage(new { courseId, tab = "upload" });
         }
 
         if (UploadedFile.Length > MaxFileSizeBytes)
         {
             ErrorMessage = "That file is too large. The maximum size is 20 MB.";
-            return RedirectToPage(new { courseId });
+            return RedirectToPage(new { courseId, tab = "upload" });
         }
 
         // Save under a random, GUID-based filename rather than the name the
@@ -167,8 +185,17 @@ public class IndexModel(
         Directory.CreateDirectory(categoryFolder);
         var filePath = Path.Combine(categoryFolder, storedFileName);
 
-        await using var fileStream = new FileStream(filePath, FileMode.Create);
-        await UploadedFile.CopyToAsync(fileStream);
+        // Scoped explicitly (not a using-declaration) so the write stream -
+        // opened exclusively, since FileMode.Create defaults to FileShare.None -
+        // is closed before TryExtractText below tries to open the same file
+        // to read it back. A using-declaration here would keep it open (and
+        // locked) until the end of this method, making every extraction
+        // attempt fail with a file-in-use error that TryExtractText's
+        // catch-all silently swallows into "no text available".
+        await using (var fileStream = new FileStream(filePath, FileMode.Create))
+        {
+            await UploadedFile.CopyToAsync(fileStream);
+        }
 
         // Best-effort text extraction: a failure here still leaves a
         // perfectly good upload, just with no extracted text.
@@ -195,6 +222,15 @@ public class IndexModel(
         _db.Assessments.Add(assessment);
         await _db.SaveChangesAsync();
 
+        // Report assessments get the Report tab's default checklist as soon
+        // as they exist, so there's something to show the first time a
+        // student opens the Report tab for it.
+        if (assessment.Category == AssessmentCategory.Report)
+        {
+            _db.AssessmentChecklistItems.AddRange(AssessmentChecklistItem.CreateDefaultSet(assessment.Id));
+            await _db.SaveChangesAsync();
+        }
+
         var document = new Document
         {
             AssessmentId = assessment.Id,
@@ -209,7 +245,7 @@ public class IndexModel(
         await _db.SaveChangesAsync();
 
         StatusMessage = $"\"{document.OriginalFileName}\" was uploaded and assigned to \"{assessment.Title}\".";
-        return RedirectToPage(new { courseId });
+        return RedirectToPage(new { courseId, tab = "upload" });
     }
 
     public async Task<IActionResult> OnPostUpdateAssessmentCategoryAsync(int courseId, int assessmentId, AssessmentCategory category)
@@ -250,7 +286,7 @@ public class IndexModel(
         await _db.SaveChangesAsync();
 
         StatusMessage = $"\"{assessment.Title}\" was moved to {category}.";
-        return RedirectToPage(new { courseId });
+        return RedirectToPage(new { courseId, tab = "preferences" });
     }
 
     public async Task<IActionResult> OnPostDeleteDocumentAsync(int courseId, int documentId)
@@ -280,7 +316,7 @@ public class IndexModel(
         await _db.SaveChangesAsync();
 
         StatusMessage = $"\"{document.OriginalFileName}\" was deleted.";
-        return RedirectToPage(new { courseId });
+        return RedirectToPage(new { courseId, tab = "upload" });
     }
 
     /// <summary>
@@ -325,7 +361,7 @@ public class IndexModel(
         await _db.SaveChangesAsync();
 
         StatusMessage = $"\"{assessment.Title}\" was deleted.";
-        return RedirectToPage(new { courseId });
+        return RedirectToPage(new { courseId, tab = "preferences" });
     }
 
     /// <summary>

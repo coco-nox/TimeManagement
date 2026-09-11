@@ -25,8 +25,8 @@ public static class ColourPalettes
 {
     public const string DefaultId = "default";
 
-    public static readonly List<ColourPalette> All = new()
-    {
+    public static readonly List<ColourPalette> All =
+    [
         new ColourPalette
         {
             Id = "default",
@@ -76,7 +76,7 @@ public static class ColourPalettes
             Description = "Maximum contrast and larger focus outlines.",
             Swatch1 = "#ffffff", Swatch2 = "#e0e0e0", Swatch3 = "#000000"
         }
-    };
+    ];
 
     /// <summary>
     /// True if the given id is one of our palettes. Used to reject anything

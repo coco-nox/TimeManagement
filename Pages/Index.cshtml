@@ -5,44 +5,104 @@
 @inject UserManager<ApplicationUser> UserManager
 @model IndexModel
 @{
-    ViewData["Title"] = "Home";
+    ViewData["Title"] = "Dashboard";
 }
 
 @if (SignInManager.IsSignedIn(User))
 {
     var currentUser = await UserManager.GetUserAsync(User);
 
-    <div class="home-shell">
-        <div class="home-primary-panel card">
-            <div class="card-body p-4 p-md-5">
-                <p class="text-uppercase small text-muted mb-2">Overview</p>
-                <h1 class="h3 mb-2">Welcome back, @currentUser?.FullName</h1>
-                <p class="text-muted mb-4">Keep your course work organised and review what needs attention next.</p>
+    <h1 class="h3 mb-1">Dashboard</h1>
+    <p class="text-muted mb-4">Welcome back, @currentUser?.FullName</p>
 
-                <div class="d-flex flex-wrap align-items-center gap-3">
-                    <a class="btn btn-primary" asp-page="/Courses/Index">Open courses</a>
-                    <span class="small text-muted">Primary focus: current course and assessment work</span>
-                </div>
+    <div class="card p-4 mb-3">
+        <div class="d-flex align-items-start justify-content-between mb-2 flex-wrap gap-2">
+            <h2 class="h6 mb-0">Assessment progress</h2>
+            <div class="text-end">
+                <div class="h3 mb-0" style="color: var(--accent);">@Model.CompletedAssessmentCount / @Model.TrackedAssessmentCount</div>
+                <div class="small text-muted">@Model.ProgressPercent% completed</div>
             </div>
         </div>
 
-        <div class="home-secondary-panel mt-4">
-            <div class="card">
-                <div class="card-body p-4">
-                    <h2 class="h6 text-uppercase text-muted mb-3">Quick actions</h2>
-                    <ul class="home-secondary-list mb-0">
-                        <li><a asp-page="/Courses/Index">Review your courses</a></li>
-                        <li><a asp-page="/Courses/Index">Check due dates and missing updates</a></li>
-                        <li><span class="text-muted">Calendar planning is still in a later sprint</span></li>
-                    </ul>
+        @if (Model.TrackedAssessmentCount == 0)
+        {
+            <p class="text-muted small mb-0">Nothing to track yet — upload a Report, Quiz, or Test assessment to see progress here.</p>
+        }
+        else
+        {
+            <div class="progress" style="height: 0.9rem;">
+                <div class="progress-bar" style="width: @(Model.ProgressPercent)%; background-color: var(--accent);"></div>
+            </div>
+        }
+    </div>
+
+    <h2 class="h6 mb-3">Your courses</h2>
+    <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3 mb-3">
+        @foreach (var course in Model.Courses)
+        {
+            var trackedCount = course.Assessments.Count(a => a.Category != AssessmentCategory.Coursework);
+            var docCount = course.Assessments.Sum(a => a.Documents.Count);
+
+            <div class="col">
+                <div class="folder-card">
+                    <div class="folder-card-strip" style="--folder-colour: @course.ColourHex;"></div>
+                    <div class="p-3 position-relative">
+                        <details class="folder-colour-picker">
+                            <summary class="position-absolute top-0 end-0 mt-3 me-3" style="--folder-colour: @course.ColourHex;">
+                                <span class="folder-colour-dot" style="--folder-colour: @course.ColourHex;" title="Change folder colour" aria-label="Change folder colour"></span>
+                            </summary>
+                            <div class="folder-colour-swatches">
+                                @foreach (var swatch in FolderColours.All)
+                                {
+                                    <form method="post" asp-page-handler="UpdateCourseColour" asp-route-courseId="@course.Id" class="m-0">
+                                        <input type="hidden" name="colour" value="@swatch.Hex" />
+                                        <button type="submit" class="folder-swatch-btn @(string.Equals(course.ColourHex, swatch.Hex, StringComparison.OrdinalIgnoreCase) ? "selected" : "")"
+                                                style="background-color: @swatch.Hex;" title="@swatch.Name" aria-label="@swatch.Name"></button>
+                                    </form>
+                                }
+                            </div>
+                        </details>
+
+                        <a asp-page="/Courses/Index" asp-route-courseId="@course.Id" class="folder-card-link" style="padding-right: 2rem;">
+                            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="folder-card-icon" style="--folder-colour: @course.ColourHex;"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.5l2 2.5h8A1.5 1.5 0 0 1 20.5 9v9A1.5 1.5 0 0 1 19 19.5H4.5A1.5 1.5 0 0 1 3 18V6.5Z"></path></svg>
+                            <div class="folder-card-title fw-semibold">@course.Title</div>
+                            <div class="small text-muted">@trackedCount assessment@(trackedCount == 1 ? "" : "s") &middot; @docCount document@(docCount == 1 ? "" : "s")</div>
+                        </a>
+                    </div>
                 </div>
             </div>
-        </div>
+        }
 
-        <div class="home-muted-notice mt-4">
+        <div class="col">
+            <a asp-page="/Courses/Index" class="folder-card-ghost h-100">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                <div class="fw-semibold">Add a course</div>
+            </a>
+        </div>
+    </div>
+
+    <div class="card p-4">
+        <div class="d-flex align-items-center justify-content-between mb-1 flex-wrap gap-2">
+            <h2 class="h6 mb-0">This week</h2>
             <span class="home-mini-label">Coming soon</span>
-            Calendar view, weekly planning, and automated nudges will appear here once those features are ready.
         </div>
+        <p class="text-muted small mb-3">Full calendar and scheduling preferences aren't built yet — this previews what's due this week from your tracked assessments.</p>
+
+        <div class="mini-calendar-grid">
+            @foreach (var day in Model.WeekDays)
+            {
+                <div class="mini-calendar-weekday">@day.Date.ToString("ddd")</div>
+            }
+            @foreach (var day in Model.WeekDays)
+            {
+                <div class="mini-calendar-day @(day.IsToday ? "today" : "") @(day.HasAssessmentDue ? "has-assessment" : "")">@day.Date.Day</div>
+            }
+        </div>
+
+        @if (Model.WeekDays.Any(d => d.HasAssessmentDue))
+        {
+            <div class="small text-muted mt-3"><span class="mini-calendar-legend-dot"></span>Something's due that day</div>
+        }
     </div>
 }
 else
@@ -56,15 +116,15 @@ else
             <a class="btn btn-outline-secondary btn-lg" asp-page="/Account/Login">Log in</a>
         </p>
     </div>
-}
 
-<div class="mt-5">
-    <h2 class="h6 text-muted text-uppercase mb-3">Coming soon</h2>
-    <div class="coming-soon-strip d-flex flex-wrap gap-2">
-        <span class="coming-soon-chip"><span aria-hidden="true">⏱️</span> Time tracking that learns</span>
-        <span class="coming-soon-chip"><span aria-hidden="true">🔔</span> Live nudges</span>
-        <span class="coming-soon-chip"><span aria-hidden="true">🎯</span> Smart categories</span>
-        <span class="coming-soon-chip"><span aria-hidden="true">📊</span> Weekly check-in</span>
-        <span class="coming-soon-chip"><span aria-hidden="true">💬</span> Chat with your planner</span>
+    <div class="mt-5">
+        <h2 class="h6 text-muted text-uppercase mb-3">Coming soon</h2>
+        <div class="coming-soon-strip d-flex flex-wrap gap-2">
+            <span class="coming-soon-chip"><span aria-hidden="true">⏱️</span> Time tracking that learns</span>
+            <span class="coming-soon-chip"><span aria-hidden="true">🔔</span> Live nudges</span>
+            <span class="coming-soon-chip"><span aria-hidden="true">🎯</span> Smart categories</span>
+            <span class="coming-soon-chip"><span aria-hidden="true">📊</span> Weekly check-in</span>
+            <span class="coming-soon-chip"><span aria-hidden="true">💬</span> Chat with your planner</span>
+        </div>
     </div>
-</div>
+}

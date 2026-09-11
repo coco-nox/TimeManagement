@@ -7,12 +7,12 @@
 }
 
 html {
-  font-size: 14px;
+  font-size: 16px;
 }
 
 @media (min-width: 768px) {
   html {
-    font-size: 16px;
+    font-size: 18px;
   }
 }
 
@@ -238,6 +238,109 @@ body {
   background-color: var(--secondary, var(--accent));
 }
 
+/* ---------- Dashboard folder cards (course grid) ---------- */
+
+.folder-card {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.folder-card-strip {
+  height: 0.5rem;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background-color: var(--folder-colour, var(--accent));
+}
+
+.folder-card-link {
+  display: block;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.folder-card-link:hover {
+  color: var(--text);
+}
+
+.folder-card-link:hover .folder-card-title {
+  text-decoration: underline;
+}
+
+.folder-card-icon {
+  color: var(--folder-colour, var(--accent));
+  margin-bottom: 0.6rem;
+}
+
+/* The little colour-dot button that opens the swatch picker - a native
+   <details>/<summary>, so no JS is needed to open/close it. */
+.folder-colour-picker summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.folder-colour-picker summary::-webkit-details-marker {
+  display: none;
+}
+
+.folder-colour-dot {
+  display: block;
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 50%;
+  background-color: var(--folder-colour, var(--accent));
+  border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.folder-colour-swatches {
+  position: absolute;
+  top: 2.5rem;
+  right: 1rem;
+  z-index: 5;
+  width: 10rem;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  padding: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.folder-swatch-btn {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  padding: 0;
+  cursor: pointer;
+}
+
+.folder-swatch-btn.selected {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text);
+}
+
+.folder-card-ghost {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.25rem;
+  min-height: 6rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.folder-card-ghost:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
 /* ---------- "Coming soon" strip ---------- */
 
 .coming-soon-chip {
@@ -260,4 +363,281 @@ body {
 .palette-option:hover .card {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+}
+
+/* ---------- App shell: left sidebar nav (signed-in layout) ----------
+   Replaces the old top navbar for signed-in users - see _Layout.cshtml.
+   Built entirely from the palette variables above so it looks right under
+   all seven palettes, not just the default one. */
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  align-items: stretch;
+}
+
+.app-sidebar {
+  width: 17.5rem;
+  flex-shrink: 0;
+  background-color: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1.25rem;
+}
+
+.app-sidebar.collapsed {
+  width: 4.75rem;
+  padding: 1.25rem 1rem;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-bottom: 1.5rem;
+}
+
+.sidebar-brand-text {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.sidebar-toggle {
+  background: none;
+  border: none;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-toggle:hover {
+  background-color: var(--page-bg);
+}
+
+.sidebar-divider {
+  height: 1px;
+  background-color: var(--border);
+  margin: 0.75rem 0;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sidebar-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  text-decoration: none;
+  font: inherit;
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 500;
+}
+
+.sidebar-row:hover {
+  background-color: var(--page-bg);
+  color: var(--text);
+}
+
+.sidebar-row.active {
+  background-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.sidebar-row svg {
+  flex-shrink: 0;
+}
+
+.sidebar-row.disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.sidebar-row.disabled:hover {
+  background-color: transparent;
+  color: var(--text-muted);
+}
+
+.sidebar-soon-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background-color: var(--page-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  margin-left: auto;
+}
+
+.sidebar-profile-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background-color: var(--accent);
+  color: var(--accent-text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.sidebar-profile-text {
+  min-width: 0;
+  flex-grow: 1;
+}
+
+.sidebar-profile-name {
+  font-size: 1.05rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-profile-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.sidebar-row.active .sidebar-profile-sub {
+  color: var(--accent-text);
+  opacity: 0.85;
+}
+
+.sidebar-subnav {
+  display: none;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin: 0.25rem 0 0.25rem 1.25rem;
+  padding-left: 1.25rem;
+  border-left: 2px solid var(--border);
+}
+
+.sidebar-subnav.show {
+  display: flex;
+}
+
+#profileChevron {
+  transition: transform 0.15s ease-in-out;
+}
+
+#profileChevron.expanded {
+  transform: rotate(180deg);
+}
+
+.sidebar-sub-row {
+  padding: 0.6rem 0.85rem;
+  border-radius: calc(var(--radius) - 0.15rem);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.sidebar-sub-row:hover {
+  background-color: var(--page-bg);
+  color: var(--text);
+}
+
+.sidebar-sub-row.active {
+  font-weight: 700;
+  color: var(--text);
+  background-color: var(--page-bg);
+}
+
+.sidebar-spacer {
+  flex-grow: 1;
+}
+
+.sidebar-logout-row {
+  color: var(--danger);
+}
+
+.sidebar-logout-row:hover {
+  background-color: var(--page-bg);
+}
+
+.app-main {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.app-content {
+  flex-grow: 1;
+  padding: 2.5rem 3rem;
+}
+
+.app-footer {
+  padding: 1rem 3rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* Below this width the sidebar always shows as a collapsed icon rail -
+   the toggle still works above it, this is just the small-screen default. */
+@media (max-width: 900px) {
+  .app-sidebar {
+    width: 4.75rem;
+    padding: 1.25rem 1rem;
+  }
+
+  .app-content {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .app-footer {
+    padding: 1rem 1.25rem;
+  }
+}
+
+/* Collapsed state (via the toggle, or the small-screen default above)
+   hides every text label and centres the icons/avatar. */
+@media (max-width: 900px) {
+  .app-sidebar:not(.collapsed) .sidebar-label,
+  .app-sidebar:not(.collapsed) .sidebar-brand-text,
+  .app-sidebar:not(.collapsed) .sidebar-profile-text,
+  .app-sidebar:not(.collapsed) .sidebar-subnav {
+    display: none;
+  }
+}
+
+.app-sidebar.collapsed .sidebar-label,
+.app-sidebar.collapsed .sidebar-brand-text,
+.app-sidebar.collapsed .sidebar-profile-text,
+.app-sidebar.collapsed .sidebar-subnav {
+  display: none;
+}
+
+.app-sidebar.collapsed .sidebar-row,
+.app-sidebar.collapsed .sidebar-brand {
+  justify-content: center;
+}
+
+@media (max-width: 900px) {
+  .app-sidebar:not(.collapsed) .sidebar-row,
+  .app-sidebar:not(.collapsed) .sidebar-brand {
+    justify-content: center;
+  }
 }

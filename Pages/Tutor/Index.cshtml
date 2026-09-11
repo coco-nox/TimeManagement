@@ -5,18 +5,20 @@
 }
 
 <h1 class="h3 mb-1">Tutor</h1>
-<p class="text-muted">Ask questions about your course material, or test yourself with a generated quiz.</p>
+<p class="text-muted">Ask questions about your course material, track a report's progress, or test yourself with a generated quiz.</p>
 
-@* Quiz & test and Report are a future sprint - shown so the plan is visible, not clickable yet. *@
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
-        <span class="nav-link active">Chat</span>
+        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="chat"
+           class="nav-link @(Model.ActiveTab == "chat" ? "active" : "")">Chat</a>
     </li>
     <li class="nav-item">
-        <span class="nav-link disabled" aria-disabled="true" title="Coming soon">Quiz &amp; test</span>
+        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="quiz"
+           class="nav-link @(Model.ActiveTab == "quiz" ? "active" : "")">Quiz</a>
     </li>
     <li class="nav-item">
-        <span class="nav-link disabled" aria-disabled="true" title="Coming soon">Report</span>
+        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="report"
+           class="nav-link @(Model.ActiveTab == "report" ? "active" : "")">Report</a>
     </li>
 </ul>
 
@@ -26,6 +28,36 @@
             <div class="card-body py-3">
                 <div class="display-6 fw-bold">@Model.TotalAssessmentsTracked</div>
                 <div class="small text-muted text-uppercase">Assessments tracked</div>
+
+                @* One shared Archive control for all three tabs - archives whichever
+                   tab is currently active. Each branch posts to that tab's own
+                   handler; courseId/assessmentId travel via asp-route-* (the query
+                   string), not as form fields - see the [FromForm] note on each
+                   handler in Index.cshtml.cs for why that matters. *@
+                @if (Model.SelectedCourseId != null && !Model.ShowArchive)
+                {
+                    if (Model.ActiveTab == "chat" && Model.ChatHistory.Any())
+                    {
+                        <form method="post" asp-page-handler="ArchiveConversation" asp-route-courseId="@Model.SelectedCourseId" class="mt-2"
+                              onsubmit="return confirm('Archive this conversation and start a new one? The old messages are kept, just hidden from view.');">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Archive</button>
+                        </form>
+                    }
+                    else if (Model.ActiveTab == "report" && Model.SelectedAssessmentId != null && Model.ChecklistItems.Any())
+                    {
+                        <form method="post" asp-page-handler="ArchiveChecklist" asp-route-courseId="@Model.SelectedCourseId" asp-route-assessmentId="@Model.SelectedAssessmentId" class="mt-2"
+                              onsubmit="return confirm('Archive this checklist and start a fresh one? The old progress is kept, just hidden from view.');">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Archive</button>
+                        </form>
+                    }
+                    else if (Model.ActiveTab == "quiz" && Model.SelectedAssessmentId != null && Model.QuizStats.Any())
+                    {
+                        <form method="post" asp-page-handler="ArchiveQuiz" asp-route-courseId="@Model.SelectedCourseId" asp-route-assessmentId="@Model.SelectedAssessmentId" class="mt-2"
+                              onsubmit="return confirm('Archive this quiz session and start a new one? The old results are kept, just hidden from view.');">
+                            <button type="submit" class="btn btn-outline-secondary btn-sm w-100">Archive</button>
+                        </form>
+                    }
+                }
             </div>
         </div>
 
@@ -41,7 +73,7 @@
                 @foreach (var course in Model.Courses)
                 {
                     var docCount = course.Assessments.Sum(a => a.Documents.Count);
-                    <a asp-page="/Tutor/Index" asp-route-courseId="@course.Id"
+                    <a asp-page="/Tutor/Index" asp-route-courseId="@course.Id" asp-route-tab="@Model.ActiveTab"
                        class="list-group-item list-group-item-action @(Model.SelectedCourseId == course.Id ? "active" : "")">
                         <div class="fw-semibold">@course.Title</div>
                         <div class="small @(Model.SelectedCourseId == course.Id ? "" : "text-muted")">@docCount document@(docCount == 1 ? "" : "s")</div>
@@ -54,157 +86,432 @@
     <div class="col-lg-9">
         @if (Model.Courses.Any() && Model.SelectedCourseId == null)
         {
-            <p class="text-muted">Choose a course from the list to start asking questions about its documents.</p>
+            <p class="text-muted">Choose a course from the list to get started.</p>
         }
         else if (Model.SelectedCourse != null)
         {
-            var totalDocs = Model.SelectedCourse.Assessments.Sum(a => a.Documents.Count);
-            <div class="card">
-                <div class="p-3 border-bottom">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-                        <div>
-                            <span class="fw-semibold">@Model.SelectedCourse.Title</span>
-                            <span class="text-muted"> — based on your @totalDocs uploaded document@(totalDocs == 1 ? "" : "s")</span>
+            @* Hidden token shared by the Report/Quiz tabs' fetch() calls below -
+               chat's own antiforgery token lives inside #chatForm and only
+               renders while the Chat tab's live view is showing, so it can't
+               be reused for the other two tabs. *@
+            <form id="tutorAntiForgeryForm" style="display:none;">@Html.AntiForgeryToken()</form>
+
+            if (Model.ActiveTab == "chat")
+            {
+                var totalDocs = Model.SelectedCourse.Assessments.Sum(a => a.Documents.Count);
+                <div class="card">
+                    <div class="p-3 border-bottom">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>
+                                <span class="fw-semibold">@Model.SelectedCourse.Title</span>
+                                <span class="text-muted"> — based on your @totalDocs uploaded document@(totalDocs == 1 ? "" : "s")</span>
+                            </div>
+
+                            @* Nothing to archive/restart in a brand new, empty conversation. *@
+                            @if (!Model.ShowArchive && Model.ChatHistory.Any())
+                            {
+                                <div class="d-flex gap-2">
+                                    <form method="post" asp-page-handler="ArchiveConversation" asp-route-courseId="@Model.SelectedCourseId"
+                                          onsubmit="return confirm('Archive this conversation and start a new one? The old messages are kept, just hidden from view.');">
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm">Archive &amp; start new</button>
+                                    </form>
+                                    <form method="post" asp-page-handler="DeleteConversation" asp-route-courseId="@Model.SelectedCourseId"
+                                          onsubmit="return confirm('Delete this conversation? This can\'t be undone.');">
+                                        <button type="submit" class="btn btn-outline-danger btn-sm">Delete conversation</button>
+                                    </form>
+                                </div>
+                            }
                         </div>
 
-                        @* Nothing to archive/restart in a brand new, empty conversation. *@
-                        @if (!Model.ShowArchive && Model.ChatHistory.Any())
-                        {
-                            <div class="d-flex gap-2">
-                                <form method="post" asp-page-handler="ArchiveConversation" asp-route-courseId="@Model.SelectedCourseId"
-                                      onsubmit="return confirm('Archive this conversation and start a new one? The old messages are kept, just hidden from view.');">
-                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Archive &amp; start new</button>
-                                </form>
-                                <form method="post" asp-page-handler="DeleteConversation" asp-route-courseId="@Model.SelectedCourseId"
-                                      onsubmit="return confirm('Delete this conversation? This can\'t be undone.');">
-                                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete conversation</button>
-                                </form>
-                            </div>
-                        }
+                        @* Always available under the course name, whether or not there's an
+                           active conversation right now, so past conversations stay reachable. *@
+                        <div class="mt-1">
+                            @if (Model.ShowArchive)
+                            {
+                                <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="chat" class="small">&larr; Back to chat</a>
+                            }
+                            else
+                            {
+                                <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="chat" asp-route-archive="true" class="small">Archived conversations</a>
+                            }
+                        </div>
                     </div>
 
-                    @* Always available under the course name, whether or not there's an
-                       active conversation right now, so past conversations stay reachable. *@
-                    <div class="mt-1">
-                        @if (Model.ShowArchive)
+                    @if (Model.ShowArchive)
+                    {
+                        if (Model.ViewingConversationId.HasValue)
                         {
-                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" class="small">&larr; Back to chat</a>
+                            <div class="p-3" style="height: 420px; overflow-y: auto;">
+                                <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="chat" asp-route-archive="true" class="small d-inline-block mb-3">&larr; Back to archived conversations</a>
+
+                                @foreach (var message in Model.ViewingConversationMessages)
+                                {
+                                    if (message.Role == "assistant")
+                                    {
+                                        <div class="d-flex justify-content-start mb-2">
+                                            <div class="bg-light rounded p-2" style="max-width: 75%;">
+                                                <div>@message.Content</div>
+                                                @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
+                                                {
+                                                    <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex justify-content-end mb-2">
+                                            <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
+                                        </div>
+                                    }
+                                }
+                            </div>
                         }
                         else
                         {
-                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-archive="true" class="small">Archived conversations</a>
-                        }
-                    </div>
-                </div>
-
-                @if (Model.ShowArchive)
-                {
-                    if (Model.ViewingConversationId.HasValue)
-                    {
-                        <div class="p-3" style="height: 420px; overflow-y: auto;">
-                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-archive="true" class="small d-inline-block mb-3">&larr; Back to archived conversations</a>
-
-                            @foreach (var message in Model.ViewingConversationMessages)
-                            {
-                                if (message.Role == "assistant")
+                            <div class="p-3">
+                                @if (!Model.ArchivedConversations.Any())
                                 {
-                                    <div class="d-flex justify-content-start mb-2">
-                                        <div class="bg-light rounded p-2" style="max-width: 75%;">
-                                            <div>@message.Content</div>
-                                            @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
-                                            {
-                                                <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
-                                            }
-                                        </div>
-                                    </div>
+                                    <p class="text-muted small mb-0">No archived conversations yet - use "Archive &amp; start new" from the chat to keep one for later without deleting it.</p>
                                 }
                                 else
                                 {
-                                    <div class="d-flex justify-content-end mb-2">
-                                        <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
+                                    <div class="list-group">
+                                        @foreach (var conversation in Model.ArchivedConversations)
+                                        {
+                                            var preview = string.IsNullOrWhiteSpace(conversation.FirstQuestion)
+                                                ? "Conversation"
+                                                : conversation.FirstQuestion.Length > 80 ? conversation.FirstQuestion[..80] + "…" : conversation.FirstQuestion;
+
+                                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="chat" asp-route-archive="true" asp-route-conversationId="@conversation.ConversationId"
+                                               class="list-group-item list-group-item-action">
+                                                <div class="d-flex justify-content-between align-items-start gap-3">
+                                                    <div>
+                                                        <div class="fw-semibold">@preview</div>
+                                                        <div class="small text-muted">
+                                                            Started @conversation.StartedUtc.ToString("d MMM yyyy") &middot; archived @conversation.ArchivedUtc.ToString("d MMM yyyy")
+                                                        </div>
+                                                    </div>
+                                                    <span class="badge text-bg-light text-nowrap">@conversation.MessageCount message@(conversation.MessageCount == 1 ? "" : "s")</span>
+                                                </div>
+                                            </a>
+                                        }
                                     </div>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div id="chatWindow" class="p-3" style="height: 420px; overflow-y: auto;">
+                            @if (!Model.ChatHistory.Any())
+                            {
+                                <p class="text-muted small mb-0" id="chatEmptyState">Ask a question about this course's documents to get started.</p>
+                            }
+                            else
+                            {
+                                foreach (var message in Model.ChatHistory)
+                                {
+                                    if (message.Role == "assistant")
+                                    {
+                                        <div class="d-flex justify-content-start mb-2">
+                                            <div class="bg-light rounded p-2" style="max-width: 75%;">
+                                                <div>@message.Content</div>
+                                                @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
+                                                {
+                                                    <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex justify-content-end mb-2">
+                                            <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
+                                        </div>
+                                    }
                                 }
                             }
                         </div>
+
+                        <div class="p-3 border-top">
+                            <form id="chatForm" class="d-flex gap-2" autocomplete="off">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="courseId" value="@Model.SelectedCourseId" />
+                                <label for="chatQuestion" class="visually-hidden">Question</label>
+                                <input type="text" name="question" id="chatQuestion" class="form-control" placeholder="Ask a question about @Model.SelectedCourse.Title..." required />
+                                <button type="submit" class="btn btn-primary" id="chatSendButton">Send</button>
+                            </form>
+                        </div>
+                    }
+                </div>
+            }
+            else if (Model.ActiveTab == "report")
+            {
+                <div class="card">
+                    <div class="p-3 border-bottom">
+                        <div class="fw-semibold mb-2">@Model.SelectedCourse.Title &mdash; Report checklist</div>
+
+                        @if (!Model.ReportAssessments.Any())
+                        {
+                            <p class="text-muted small mb-0">
+                                No Report-category assessments in this course yet.
+                                <a asp-page="/Courses/Index" asp-route-courseId="@Model.SelectedCourseId">Upload a document and set its category to Report</a> to get started.
+                            </p>
+                        }
+                        else
+                        {
+                            <div class="d-flex gap-2 flex-wrap">
+                                @foreach (var assessment in Model.ReportAssessments)
+                                {
+                                    <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="report" asp-route-assessmentId="@assessment.Id"
+                                       class="btn btn-sm @(Model.SelectedAssessmentId == assessment.Id ? "btn-primary" : "btn-outline-secondary")">@assessment.Title</a>
+                                }
+                            </div>
+
+                            @if (Model.SelectedAssessmentId != null)
+                            {
+                                <div class="mt-2">
+                                    @if (Model.ShowArchive)
+                                    {
+                                        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="report" asp-route-assessmentId="@Model.SelectedAssessmentId" class="small">&larr; Back to checklist</a>
+                                    }
+                                    else
+                                    {
+                                        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="report" asp-route-assessmentId="@Model.SelectedAssessmentId" asp-route-archive="true" class="small">Archived checklists</a>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    @if (Model.SelectedAssessmentId == null)
+                    {
+                        if (Model.ReportAssessments.Any())
+                        {
+                            <p class="text-muted p-3 mb-0">Choose a Report assessment above to view its checklist.</p>
+                        }
+                    }
+                    else if (Model.ShowArchive)
+                    {
+                        if (Model.ViewingChecklistSessionId.HasValue)
+                        {
+                            var viewedTotal = Model.ViewingChecklistItems.Count;
+                            var viewedComplete = Model.ViewingChecklistItems.Count(i => i.IsCompleted);
+                            <div class="p-3">
+                                <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="report" asp-route-assessmentId="@Model.SelectedAssessmentId" asp-route-archive="true" class="small d-inline-block mb-3">&larr; Back to archived checklists</a>
+                                <p class="small text-muted">@viewedComplete of @viewedTotal sections were complete when this session was archived.</p>
+                                <ul class="list-group">
+                                    @foreach (var item in Model.ViewingChecklistItems)
+                                    {
+                                        <li class="list-group-item d-flex align-items-center gap-2">
+                                            <input class="form-check-input" type="checkbox" disabled @(item.IsCompleted ? "checked" : "") />
+                                            <span class="@(item.IsCompleted ? "text-decoration-line-through text-muted" : "")">@item.Description</span>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="p-3">
+                                @if (!Model.ArchivedChecklistSessions.Any())
+                                {
+                                    <p class="text-muted small mb-0">No archived checklists yet - use "Archive" to keep one for later without deleting it.</p>
+                                }
+                                else
+                                {
+                                    <div class="list-group">
+                                        @foreach (var session in Model.ArchivedChecklistSessions)
+                                        {
+                                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="report" asp-route-assessmentId="@Model.SelectedAssessmentId" asp-route-archive="true" asp-route-sessionId="@session.SessionId"
+                                               class="list-group-item list-group-item-action">
+                                                <div class="d-flex justify-content-between align-items-start gap-3">
+                                                    <div>
+                                                        <div class="fw-semibold">@session.PercentComplete% complete</div>
+                                                        <div class="small text-muted">Archived @session.ArchivedUtc.ToString("d MMM yyyy")</div>
+                                                    </div>
+                                                    <span class="badge text-bg-light text-nowrap">@session.CompletedCount / @session.TotalCount sections</span>
+                                                </div>
+                                            </a>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        var totalItems = Model.ChecklistItems.Count;
+                        var completedItems = Model.ChecklistItems.Count(i => i.IsCompleted);
+                        var percent = totalItems > 0 ? completedItems * 100 / totalItems : 0;
+
+                        <div class="p-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="small text-muted" id="checklistProgressLabel">@completedItems of @totalItems sections complete</span>
+                                @if (Model.SelectedAssessment is { IsCompleted: true })
+                                {
+                                    <span class="badge text-bg-success">Completed @Model.SelectedAssessment.CompletedUtc?.ToString("d MMM yyyy")</span>
+                                }
+                            </div>
+                            <div class="progress mb-3" style="height: 8px;">
+                                <div id="checklistProgressBar" class="progress-bar bg-success" style="width: @percent%;"></div>
+                            </div>
+
+                            <ul class="list-group" id="checklistItemList">
+                                @foreach (var item in Model.ChecklistItems)
+                                {
+                                    <li class="list-group-item d-flex align-items-center gap-2">
+                                        <input class="form-check-input checklist-item-checkbox" type="checkbox" data-item-id="@item.Id" id="checklistItem@(item.Id)" @(item.IsCompleted ? "checked" : "") />
+                                        <label class="form-check-label flex-grow-1 @(item.IsCompleted ? "text-decoration-line-through text-muted" : "")" for="checklistItem@(item.Id)">@item.Description</label>
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                </div>
+            }
+            else if (Model.ActiveTab == "quiz")
+            {
+                <div class="card">
+                    <div class="p-3 border-bottom">
+                        <div class="fw-semibold mb-2">@Model.SelectedCourse.Title &mdash; Quiz</div>
+
+                        @if (!Model.QuizAssessments.Any())
+                        {
+                            <p class="text-muted small mb-0">
+                                No Quiz-category assessments in this course yet.
+                                <a asp-page="/Courses/Index" asp-route-courseId="@Model.SelectedCourseId">Upload a document and set its category to Quiz</a> to get started.
+                            </p>
+                        }
+                        else
+                        {
+                            <div class="d-flex gap-2 flex-wrap">
+                                @foreach (var assessment in Model.QuizAssessments)
+                                {
+                                    <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="quiz" asp-route-assessmentId="@assessment.Id"
+                                       class="btn btn-sm @(Model.SelectedAssessmentId == assessment.Id ? "btn-primary" : "btn-outline-secondary")">@assessment.Title</a>
+                                }
+                            </div>
+
+                            @if (Model.SelectedAssessmentId != null)
+                            {
+                                <div class="mt-2">
+                                    @if (Model.ShowArchive)
+                                    {
+                                        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="quiz" asp-route-assessmentId="@Model.SelectedAssessmentId" class="small">&larr; Back to quiz</a>
+                                    }
+                                    else
+                                    {
+                                        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="quiz" asp-route-assessmentId="@Model.SelectedAssessmentId" asp-route-archive="true" class="small">Archived quiz sessions</a>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    @if (Model.SelectedAssessmentId == null)
+                    {
+                        if (Model.QuizAssessments.Any())
+                        {
+                            <p class="text-muted p-3 mb-0">Choose a Quiz assessment above to get started.</p>
+                        }
+                    }
+                    else if (Model.ShowArchive)
+                    {
+                        if (Model.ViewingQuizSessionId.HasValue)
+                        {
+                            var viewedTotal = Model.ViewingQuizAttempts.Count;
+                            var viewedCorrect = Model.ViewingQuizAttempts.Count(a => a.IsCorrect);
+                            var viewedScore = viewedTotal > 0 ? viewedCorrect * 100 / viewedTotal : 0;
+                            <div class="p-3">
+                                <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="quiz" asp-route-assessmentId="@Model.SelectedAssessmentId" asp-route-archive="true" class="small d-inline-block mb-3">&larr; Back to archived quiz sessions</a>
+                                <p class="small text-muted">Score: @viewedCorrect / @viewedTotal (@viewedScore%)</p>
+                                <ul class="list-group">
+                                    @foreach (var attempt in Model.ViewingQuizAttempts)
+                                    {
+                                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                                            <span>@attempt.Topic</span>
+                                            <span class="badge @(attempt.IsCorrect ? "text-bg-success" : "text-bg-danger")">@(attempt.IsCorrect ? "Correct" : "Incorrect")</span>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="p-3">
+                                @if (!Model.ArchivedQuizSessions.Any())
+                                {
+                                    <p class="text-muted small mb-0">No archived quiz sessions yet - use "Archive" to keep one for later without deleting it.</p>
+                                }
+                                else
+                                {
+                                    <div class="list-group">
+                                        @foreach (var session in Model.ArchivedQuizSessions)
+                                        {
+                                            <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="quiz" asp-route-assessmentId="@Model.SelectedAssessmentId" asp-route-archive="true" asp-route-sessionId="@session.SessionId"
+                                               class="list-group-item list-group-item-action">
+                                                <div class="d-flex justify-content-between align-items-start gap-3">
+                                                    <div>
+                                                        <div class="fw-semibold">Score: @session.ScorePercent%</div>
+                                                        <div class="small text-muted">Archived @session.ArchivedUtc.ToString("d MMM yyyy")</div>
+                                                    </div>
+                                                    <span class="badge text-bg-light text-nowrap">@session.CorrectCount / @session.TotalCount correct</span>
+                                                </div>
+                                            </a>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        }
                     }
                     else
                     {
                         <div class="p-3">
-                            @if (!Model.ArchivedConversations.Any())
-                            {
-                                <p class="text-muted small mb-0">No archived conversations yet - use "Archive &amp; start new" from the chat to keep one for later without deleting it.</p>
-                            }
-                            else
-                            {
-                                <div class="list-group">
-                                    @foreach (var conversation in Model.ArchivedConversations)
-                                    {
-                                        var preview = string.IsNullOrWhiteSpace(conversation.FirstQuestion)
-                                            ? "Conversation"
-                                            : conversation.FirstQuestion.Length > 80 ? conversation.FirstQuestion[..80] + "…" : conversation.FirstQuestion;
-
-                                        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-archive="true" asp-route-conversationId="@conversation.ConversationId"
-                                           class="list-group-item list-group-item-action">
-                                            <div class="d-flex justify-content-between align-items-start gap-3">
-                                                <div>
-                                                    <div class="fw-semibold">@preview</div>
-                                                    <div class="small text-muted">
-                                                        Started @conversation.StartedUtc.ToString("d MMM yyyy") &middot; archived @conversation.ArchivedUtc.ToString("d MMM yyyy")
-                                                    </div>
-                                                </div>
-                                                <span class="badge text-bg-light text-nowrap">@conversation.MessageCount message@(conversation.MessageCount == 1 ? "" : "s")</span>
-                                            </div>
-                                        </a>
-                                    }
+                            <div class="row g-3">
+                                <div class="col-md-5">
+                                    <div class="small text-muted text-uppercase fw-semibold mb-2">Accuracy by topic</div>
+                                    <div id="quizStats">
+                                        @if (!Model.QuizStats.Any())
+                                        {
+                                            <p class="text-muted small mb-0" id="quizStatsEmpty">Answer a few questions to see your accuracy build up here.</p>
+                                        }
+                                        else
+                                        {
+                                            <ul class="list-group" id="quizStatsList">
+                                                @foreach (var stat in Model.QuizStats)
+                                                {
+                                                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                                                        <span>
+                                                            @stat.Topic
+                                                            @if (stat.Struggled)
+                                                            {
+                                                                <span class="badge text-bg-warning ms-1">Struggled</span>
+                                                            }
+                                                        </span>
+                                                        <span class="small text-muted">@stat.Correct/@stat.Total (@stat.AccuracyPercent%)</span>
+                                                    </li>
+                                                }
+                                            </ul>
+                                        }
+                                    </div>
                                 </div>
-                            }
+                                <div class="col-md-7">
+                                    <div id="quizArea"
+                                         data-course-id="@Model.SelectedCourseId"
+                                         data-assessment-id="@Model.SelectedAssessmentId">
+                                        <button type="button" id="quizStartButton" class="btn btn-primary btn-sm">
+                                            @(Model.QuizStats.Any() ? "Continue quiz" : "Start quiz")
+                                        </button>
+                                        <div id="quizQuestionContainer" class="mt-3"></div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     }
-                }
-                else
-                {
-                    <div id="chatWindow" class="p-3" style="height: 420px; overflow-y: auto;">
-                        @if (!Model.ChatHistory.Any())
-                        {
-                            <p class="text-muted small mb-0" id="chatEmptyState">Ask a question about this course's documents to get started.</p>
-                        }
-                        else
-                        {
-                            foreach (var message in Model.ChatHistory)
-                            {
-                                if (message.Role == "assistant")
-                                {
-                                    <div class="d-flex justify-content-start mb-2">
-                                        <div class="bg-light rounded p-2" style="max-width: 75%;">
-                                            <div>@message.Content</div>
-                                            @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
-                                            {
-                                                <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
-                                            }
-                                        </div>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <div class="d-flex justify-content-end mb-2">
-                                        <div class="bg-primary text-white rounded p-2" style="max-width: 75%;">@message.Content</div>
-                                    </div>
-                                }
-                            }
-                        }
-                    </div>
-
-                    <div class="p-3 border-top">
-                        <form id="chatForm" class="d-flex gap-2" autocomplete="off">
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="courseId" value="@Model.SelectedCourseId" />
-                            <label for="chatQuestion" class="visually-hidden">Question</label>
-                            <input type="text" name="question" id="chatQuestion" class="form-control" placeholder="Ask a question about @Model.SelectedCourse.Title..." required />
-                            <button type="submit" class="btn btn-primary" id="chatSendButton">Send</button>
-                        </form>
-                    </div>
-                }
-            </div>
+                </div>
+            }
         }
     </div>
 </div>
@@ -357,6 +664,267 @@
                         questionInput.focus();
                     });
             });
+        })();
+
+        // ---- Report tab: checklist item toggling ---------------------------
+        (function () {
+            var checklistList = document.getElementById('checklistItemList');
+            if (!checklistList) {
+                return;
+            }
+
+            var tokenInput = document.querySelector('#tutorAntiForgeryForm input[name="__RequestVerificationToken"]');
+            var progressLabel = document.getElementById('checklistProgressLabel');
+            var progressBar = document.getElementById('checklistProgressBar');
+
+            checklistList.querySelectorAll('.checklist-item-checkbox').forEach(function (checkbox) {
+                checkbox.addEventListener('change', function () {
+                    var itemId = checkbox.getAttribute('data-item-id');
+                    var label = document.querySelector('label[for="checklistItem' + itemId + '"]');
+                    var formData = new FormData();
+                    formData.append('itemId', itemId);
+                    if (tokenInput) {
+                        formData.append('__RequestVerificationToken', tokenInput.value);
+                    }
+
+                    checkbox.disabled = true;
+
+                    fetch(window.location.pathname + '?handler=ToggleChecklistItem', {
+                        method: 'POST',
+                        body: formData
+                    })
+                        .then(function (response) {
+                            if (!response.ok) {
+                                throw new Error('Request failed with status ' + response.status);
+                            }
+                            return response.json();
+                        })
+                        .then(function (result) {
+                            checkbox.checked = result.isCompleted;
+                            if (label) {
+                                label.classList.toggle('text-decoration-line-through', result.isCompleted);
+                                label.classList.toggle('text-muted', result.isCompleted);
+                            }
+                            if (progressLabel) {
+                                progressLabel.textContent = result.completedCount + ' of ' + result.totalCount + ' sections complete';
+                            }
+                            if (progressBar) {
+                                var percent = result.totalCount > 0 ? Math.round((result.completedCount / result.totalCount) * 100) : 0;
+                                progressBar.style.width = percent + '%';
+                            }
+                        })
+                        .catch(function () {
+                            checkbox.checked = !checkbox.checked;
+                            alert('Something went wrong updating that item. Please try again.');
+                        })
+                        .finally(function () {
+                            checkbox.disabled = false;
+                        });
+                });
+            });
+        })();
+
+        // ---- Quiz tab: generate questions and record answers ----------------
+        (function () {
+            var quizArea = document.getElementById('quizArea');
+            if (!quizArea) {
+                return;
+            }
+
+            var courseId = quizArea.getAttribute('data-course-id');
+            var assessmentId = quizArea.getAttribute('data-assessment-id');
+            var tokenInput = document.querySelector('#tutorAntiForgeryForm input[name="__RequestVerificationToken"]');
+            var startButton = document.getElementById('quizStartButton');
+            var questionContainer = document.getElementById('quizQuestionContainer');
+            var statsContainer = document.getElementById('quizStats');
+            var questionQueue = [];
+
+            function tokenValue() {
+                return tokenInput ? tokenInput.value : '';
+            }
+
+            function renderStats(stats) {
+                if (!stats || stats.length === 0) {
+                    statsContainer.innerHTML = '<p class="text-muted small mb-0">Answer a few questions to see your accuracy build up here.</p>';
+                    return;
+                }
+
+                var list = document.createElement('ul');
+                list.className = 'list-group';
+                list.id = 'quizStatsList';
+
+                stats.forEach(function (stat) {
+                    var item = document.createElement('li');
+                    item.className = 'list-group-item d-flex justify-content-between align-items-center';
+
+                    var label = document.createElement('span');
+                    label.textContent = stat.topic;
+                    if (stat.struggled) {
+                        var badge = document.createElement('span');
+                        badge.className = 'badge text-bg-warning ms-1';
+                        badge.textContent = 'Struggled';
+                        label.appendChild(badge);
+                    }
+
+                    var score = document.createElement('span');
+                    score.className = 'small text-muted';
+                    score.textContent = stat.correct + '/' + stat.total + ' (' + stat.accuracyPercent + '%)';
+
+                    item.appendChild(label);
+                    item.appendChild(score);
+                    list.appendChild(item);
+                });
+
+                statsContainer.innerHTML = '';
+                statsContainer.appendChild(list);
+            }
+
+            function showMessage(text) {
+                questionContainer.innerHTML = '';
+                var message = document.createElement('p');
+                message.className = 'text-muted small mb-0';
+                message.textContent = text;
+                questionContainer.appendChild(message);
+            }
+
+            function fetchQuestions() {
+                startButton.disabled = true;
+                showMessage('Generating questions...');
+
+                var formData = new FormData();
+                formData.append('courseId', courseId);
+                formData.append('assessmentId', assessmentId);
+                formData.append('__RequestVerificationToken', tokenValue());
+
+                fetch(window.location.pathname + '?handler=GenerateQuiz', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Request failed with status ' + response.status);
+                        }
+                        return response.json();
+                    })
+                    .then(function (result) {
+                        if (!result.questions || result.questions.length === 0) {
+                            showMessage(result.error || "The AI tutor didn't return a usable quiz. Please try again.");
+                            return;
+                        }
+
+                        questionQueue = result.questions;
+                        renderNextQuestion();
+                    })
+                    .catch(function () {
+                        showMessage('Something went wrong generating that quiz. Please try again.');
+                    })
+                    .finally(function () {
+                        startButton.disabled = false;
+                    });
+            }
+
+            function renderNextQuestion() {
+                if (questionQueue.length === 0) {
+                    showMessage('Nice work! Generate another batch to keep going.');
+                    startButton.textContent = 'Generate more questions';
+                    startButton.style.display = 'inline-block';
+                    return;
+                }
+
+                startButton.style.display = 'none';
+                var question = questionQueue.shift();
+                questionContainer.innerHTML = '';
+
+                var prompt = document.createElement('p');
+                prompt.className = 'fw-semibold';
+                prompt.textContent = question.question;
+                questionContainer.appendChild(prompt);
+
+                var optionsGroup = document.createElement('div');
+                var name = 'quizOption';
+
+                question.options.forEach(function (option, index) {
+                    var wrapper = document.createElement('div');
+                    wrapper.className = 'form-check';
+
+                    var input = document.createElement('input');
+                    input.className = 'form-check-input';
+                    input.type = 'radio';
+                    input.name = name;
+                    input.id = name + index;
+                    input.value = option;
+
+                    var label = document.createElement('label');
+                    label.className = 'form-check-label';
+                    label.setAttribute('for', name + index);
+                    label.textContent = option;
+
+                    wrapper.appendChild(input);
+                    wrapper.appendChild(label);
+                    optionsGroup.appendChild(wrapper);
+                });
+
+                questionContainer.appendChild(optionsGroup);
+
+                var submitButton = document.createElement('button');
+                submitButton.type = 'button';
+                submitButton.className = 'btn btn-primary btn-sm mt-2';
+                submitButton.textContent = 'Submit answer';
+                submitButton.addEventListener('click', function () {
+                    var selected = optionsGroup.querySelector('input[name="' + name + '"]:checked');
+                    if (!selected) {
+                        alert('Please choose an answer first.');
+                        return;
+                    }
+
+                    submitAnswer(question, selected.value, submitButton);
+                });
+                questionContainer.appendChild(submitButton);
+            }
+
+            function submitAnswer(question, selectedValue, submitButton) {
+                submitButton.disabled = true;
+                var isCorrect = selectedValue === question.correctAnswer;
+
+                var formData = new FormData();
+                formData.append('courseId', courseId);
+                formData.append('assessmentId', assessmentId);
+                formData.append('topic', question.topic);
+                formData.append('isCorrect', isCorrect);
+                formData.append('__RequestVerificationToken', tokenValue());
+
+                fetch(window.location.pathname + '?handler=AnswerQuiz', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Request failed with status ' + response.status);
+                        }
+                        return response.json();
+                    })
+                    .then(function (result) {
+                        renderStats(result.stats);
+
+                        var feedback = document.createElement('p');
+                        feedback.className = isCorrect ? 'text-success mt-2 mb-0' : 'text-danger mt-2 mb-0';
+                        feedback.textContent = isCorrect ? 'Correct!' : 'Not quite - correct answer: ' + question.correctAnswer;
+                        questionContainer.appendChild(feedback);
+
+                        var nextButton = document.createElement('button');
+                        nextButton.type = 'button';
+                        nextButton.className = 'btn btn-outline-secondary btn-sm mt-2';
+                        nextButton.textContent = 'Next question';
+                        nextButton.addEventListener('click', renderNextQuestion);
+                        questionContainer.appendChild(nextButton);
+                    })
+                    .catch(function () {
+                        alert('Something went wrong recording that answer. Please try again.');
+                        submitButton.disabled = false;
+                    });
+            }
+
+            startButton.addEventListener('click', fetchQuestions);
         })();
     </script>
 }

@@ -5,17 +5,48 @@
 @{
     // Work out which palette to use. Signed-out visitors get the default one.
     var palette = ColourPalettes.DefaultId;
-    if (SignInManager.IsSignedIn(User))
+    var isSignedIn = SignInManager.IsSignedIn(User);
+    ApplicationUser? currentUser = null;
+
+    if (isSignedIn)
     {
-        var signedInUser = await UserManager.GetUserAsync(User);
+        currentUser = await UserManager.GetUserAsync(User);
 
         // Only use the saved value if it's still one of our palettes, so an
         // old or blank value in the database can't leave the page unstyled.
-        if (signedInUser != null && ColourPalettes.IsValid(signedInUser.ColourPalette))
+        if (currentUser != null && ColourPalettes.IsValid(currentUser.ColourPalette))
         {
-            palette = signedInUser.ColourPalette;
+            palette = currentUser.ColourPalette;
         }
     }
+
+    // Two initials from the user's full name (e.g. "Alex Chen" -> "AC"),
+    // shown on the sidebar's avatar circle in place of a real photo.
+    var initials = "?";
+    if (!string.IsNullOrWhiteSpace(currentUser?.FullName))
+    {
+        var initialsChars = currentUser.FullName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(2)
+            .Select(w => char.ToUpperInvariant(w[0]));
+        var joined = string.Concat(initialsChars);
+        if (!string.IsNullOrEmpty(joined))
+        {
+            initials = joined;
+        }
+    }
+
+    // Drives which sidebar row (and, for Profile, which sub-row) gets the
+    // active highlight - matched against pages that exist today. Calendar
+    // and Analytics have no pages yet, so they never match.
+    var path = Context.Request.Path.Value ?? "";
+    var isDashboardActive = path.Equals("/", StringComparison.OrdinalIgnoreCase) || path.Equals("/Index", StringComparison.OrdinalIgnoreCase);
+    var isCourseActive = path.StartsWith("/Courses", StringComparison.OrdinalIgnoreCase);
+    var isTutorActive = path.StartsWith("/Tutor", StringComparison.OrdinalIgnoreCase);
+    var isDetailsActive = path.StartsWith("/AccountDetails", StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith("/ChangePassword", StringComparison.OrdinalIgnoreCase);
+    var isDesignActive = path.StartsWith("/Settings", StringComparison.OrdinalIgnoreCase);
+    var isProfileActive = isDetailsActive || isDesignActive;
 }
 <!DOCTYPE html>
 <html lang="en">
@@ -32,6 +63,128 @@
 </head>
 <!-- data-palette drives which set of CSS variables palettes.css applies -->
 <body data-palette="@palette">
+@if (isSignedIn)
+{
+    <div class="app-shell">
+        <aside class="app-sidebar" id="appSidebar">
+            <div class="sidebar-brand">
+                <span class="sidebar-brand-text">📅 TimeManage</span>
+                <button type="button" class="sidebar-toggle" id="sidebarToggle" aria-label="Collapse menu" title="Collapse menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="3"></rect><line x1="9" y1="4" x2="9" y2="20"></line></svg>
+                </button>
+            </div>
+
+            <div class="sidebar-divider"></div>
+
+            <nav class="sidebar-nav">
+                <div>
+                    <button type="button" id="profileToggle" class="sidebar-row w-100 border-0 bg-transparent text-start @(isProfileActive ? "active" : "")" aria-expanded="@(isProfileActive ? "true" : "false")" aria-controls="profileSubnav">
+                        <span class="sidebar-profile-avatar">@initials</span>
+                        <span class="sidebar-profile-text">
+                            <span class="sidebar-profile-name d-block">@(currentUser?.FullName ?? "Your account")</span>
+                            <span class="sidebar-profile-sub">Student</span>
+                        </span>
+                        <svg id="profileChevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sidebar-label flex-shrink-0 @(isProfileActive ? "expanded" : "")"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    <div class="sidebar-subnav sidebar-label @(isProfileActive ? "show" : "")" id="profileSubnav">
+                        <a asp-page="/AccountDetails" class="sidebar-sub-row @(isDetailsActive ? "active" : "")">Details</a>
+                        <a asp-page="/Settings" class="sidebar-sub-row @(isDesignActive ? "active" : "")">Design</a>
+                    </div>
+                </div>
+
+                <a asp-page="/Index" class="sidebar-row @(isDashboardActive ? "active" : "")">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
+                    <span class="sidebar-label">Dashboard</span>
+                </a>
+
+                <a asp-page="/Courses/Index" class="sidebar-row @(isCourseActive ? "active" : "")">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.5l2 2.5h8A1.5 1.5 0 0 1 20.5 9v9A1.5 1.5 0 0 1 19 19.5H4.5A1.5 1.5 0 0 1 3 18V6.5Z"></path></svg>
+                    <span class="sidebar-label">Course</span>
+                </a>
+
+                @* Not built yet (a later sprint) - shown so the plan is visible, not clickable yet. *@
+                <span class="sidebar-row disabled">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"></rect><line x1="3" y1="10" x2="21" y2="10"></line><line x1="8" y1="3" x2="8" y2="7"></line><line x1="16" y1="3" x2="16" y2="7"></line></svg>
+                    <span class="sidebar-label">Calendar</span>
+                    <span class="sidebar-soon-badge sidebar-label">Soon</span>
+                </span>
+
+                <a asp-page="/Tutor/Index" class="sidebar-row @(isTutorActive ? "active" : "")">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8A2.5 2.5 0 0 1 17.5 16H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-8Z"></path></svg>
+                    <span class="sidebar-label">Tutor</span>
+                </a>
+
+                @* Not built yet (a later sprint) - shown so the plan is visible, not clickable yet. *@
+                <span class="sidebar-row disabled">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="12" width="4" height="8" rx="1"></rect><rect x="10" y="6" width="4" height="14" rx="1"></rect><rect x="16.5" y="9" width="4" height="11" rx="1"></rect></svg>
+                    <span class="sidebar-label">Analytics</span>
+                    <span class="sidebar-soon-badge sidebar-label">Soon</span>
+                </span>
+            </nav>
+
+            <div class="sidebar-spacer"></div>
+
+            <div class="sidebar-divider"></div>
+
+            <form asp-page="/Account/Logout" method="post">
+                <button type="submit" class="sidebar-row sidebar-logout-row w-100 border-0 bg-transparent text-start">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H9"></path><line x1="20" y1="12" x2="10.5" y2="12"></line><path d="M16 8l4 4-4 4"></path></svg>
+                    <span class="sidebar-label">Log out</span>
+                </button>
+            </form>
+        </aside>
+
+        @* Runs immediately after the sidebar markup (not deferred to the end of
+           body) so a returning visitor's collapsed choice applies before the
+           sidebar paints, instead of flashing expanded first. *@
+        <script>
+            (function () {
+                var sidebar = document.getElementById('appSidebar');
+                var toggle = document.getElementById('sidebarToggle');
+                if (!sidebar || !toggle) {
+                    return;
+                }
+
+                if (localStorage.getItem('sidebarCollapsed') === '1') {
+                    sidebar.classList.add('collapsed');
+                }
+
+                toggle.addEventListener('click', function () {
+                    var collapsed = sidebar.classList.toggle('collapsed');
+                    localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+                });
+
+                // Profile row toggles its Details/Design sub-items open and
+                // shut rather than navigating anywhere itself - server-rendered
+                // open-by-default only when one of those pages is active (see
+                // isProfileActive above), otherwise this starts collapsed.
+                var profileToggle = document.getElementById('profileToggle');
+                var profileSubnav = document.getElementById('profileSubnav');
+                var profileChevron = document.getElementById('profileChevron');
+                if (profileToggle && profileSubnav) {
+                    profileToggle.addEventListener('click', function () {
+                        var expanded = profileSubnav.classList.toggle('show');
+                        profileToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                        if (profileChevron) {
+                            profileChevron.classList.toggle('expanded', expanded);
+                        }
+                    });
+                }
+            })();
+        </script>
+
+        <div class="app-main">
+            <main role="main" class="app-content">
+                @RenderBody()
+            </main>
+            <footer class="app-footer">
+                &copy; 2026 - TimeManagement - <a asp-area="" asp-page="/Privacy">Privacy</a>
+            </footer>
+        </div>
+    </div>
+}
+else
+{
     <header>
         <nav class="navbar navbar-expand-sm navbar-toggleable-sm navbar-light bg-white border-bottom box-shadow mb-3 sticky-top">
             <div class="container">
@@ -45,21 +198,13 @@
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-page="/Index">Home</a>
                         </li>
-                        @* Courses link only makes sense once there's a user to own courses *@
-                        @if (SignInManager.IsSignedIn(User))
-                        {
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-page="/Courses/Index">Courses</a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link text-dark" asp-area="" asp-page="/Tutor/Index">Tutor</a>
-                            </li>
-                        }
                         <li class="nav-item">
                             <a class="nav-link text-dark" asp-area="" asp-page="/Privacy">Privacy</a>
                         </li>
                     </ul>
-                    @* Account links (login/register) or the signed-in user's name + settings/logout *@
+                    @* Account links (login/register) - the signed-in name+settings+logout
+                       branch of this partial never renders here, since this whole block
+                       only renders for signed-out visitors. *@
                     <partial name="_LoginPartial" />
                 </div>
             </div>
@@ -76,6 +221,7 @@
             &copy; 2026 - TimeManagement - <a asp-area="" asp-page="/Privacy">Privacy</a>
         </div>
     </footer>
+}
 
     <script src="~/lib/jquery/dist/jquery.min.js"></script>
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>

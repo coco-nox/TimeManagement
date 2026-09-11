@@ -19,6 +19,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
+    public DbSet<AssessmentChecklistItem> AssessmentChecklistItems => Set<AssessmentChecklistItem>();
+
+    public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
+
+    public DbSet<CalendarTask> CalendarTasks => Set<CalendarTask>();
+
+    public DbSet<WeeklyCheckIn> WeeklyCheckIns => Set<WeeklyCheckIn>();
+
     // Column constraints and relationships for every entity in the app.
     // EF Core would infer reasonable defaults without this, but being
     // explicit here (max lengths, required-ness, cascade deletes) is what
@@ -35,6 +43,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         builder.Entity<Course>(course =>
         {
             course.Property(c => c.Title).HasMaxLength(200).IsRequired();
+            course.Property(c => c.ColourHex).HasMaxLength(7).IsRequired().HasDefaultValue(FolderColours.DefaultHex);
             course.HasIndex(c => c.UserId);
         });
 
@@ -80,6 +89,67 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             chatMessage.HasOne(m => m.Course)
                 .WithMany()
                 .HasForeignKey(m => m.CourseId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // A checklist item belongs to one (Report) assessment; deleting the
+        // assessment deletes its checklist items too.
+        builder.Entity<AssessmentChecklistItem>(item =>
+        {
+            item.Property(i => i.Description).HasMaxLength(200).IsRequired();
+            item.HasIndex(i => i.AssessmentId);
+            // Speeds up "find this assessment's active (unarchived) session".
+            item.HasIndex(i => new { i.AssessmentId, i.ArchivedUtc });
+
+            item.HasOne(i => i.Assessment)
+                .WithMany()
+                .HasForeignKey(i => i.AssessmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // A quiz attempt belongs to one assessment; same cascade-delete reasoning.
+        builder.Entity<QuizAttempt>(attempt =>
+        {
+            attempt.Property(a => a.Topic).HasMaxLength(200).IsRequired();
+            attempt.HasIndex(a => a.AssessmentId);
+            // Speeds up "find this assessment's active (unarchived) session".
+            attempt.HasIndex(a => new { a.AssessmentId, a.ArchivedUtc });
+
+            attempt.HasOne(a => a.Assessment)
+                .WithMany()
+                .HasForeignKey(a => a.AssessmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // A calendar task belongs to one user, and optionally to one
+        // assessment - deleting the assessment just detaches the task
+        // (SetNull) rather than deleting a scheduled block outright.
+        builder.Entity<CalendarTask>(task =>
+        {
+            task.Property(t => t.Title).HasMaxLength(200).IsRequired();
+            task.HasIndex(t => t.UserId);
+
+            task.HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            task.HasOne(t => t.Assessment)
+                .WithMany()
+                .HasForeignKey(t => t.AssessmentId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // A weekly check-in belongs to one user.
+        builder.Entity<WeeklyCheckIn>(checkIn =>
+        {
+            checkIn.Property(c => c.Mood).HasMaxLength(50).IsRequired();
+            checkIn.Property(c => c.ScheduleFit).HasMaxLength(50).IsRequired();
+            checkIn.HasIndex(c => c.UserId);
+
+            checkIn.HasOne(c => c.User)
+                .WithMany()
+                .HasForeignKey(c => c.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

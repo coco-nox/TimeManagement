@@ -77,10 +77,11 @@ builder.Services.ConfigureApplicationCookie(options =>
 builder.Services.Configure<DocumentCategorizationOptions>(builder.Configuration.GetSection("Gemini"));
 builder.Services.AddHttpClient<DocumentCategorizationService>();
 
-// TutorChatService reuses the same DocumentCategorizationOptions/endpoint
-// above - it's a second typed client for the same AI provider, not a
-// separate integration.
+// TutorChatService and QuizGenerationService reuse the same
+// DocumentCategorizationOptions/endpoint above - each is another typed
+// client for the same AI provider, not a separate integration.
 builder.Services.AddHttpClient<TutorChatService>();
+builder.Services.AddHttpClient<QuizGenerationService>();
 
 // ---------------------------------------------------------------------
 // Razor Pages: page routing plus the folder-level sign-in requirement.

@@ -1,0 +1,58 @@
+@page
+@model AccountDetailsModel
+@{
+    ViewData["Title"] = "Details";
+}
+
+<h1 class="h3 mb-1">Details</h1>
+<p class="text-muted">Your account information.</p>
+
+@if (Model.StatusMessage != null)
+{
+    <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
+}
+
+<div asp-validation-summary="ModelOnly" class="text-danger mb-3" role="alert"></div>
+
+<div class="card mb-3">
+    <div class="card-body p-4">
+        <h2 class="h6 text-uppercase text-muted mb-3">Full name</h2>
+        <form method="post" asp-page-handler="UpdateFullName" class="d-flex flex-wrap gap-2 align-items-start">
+            <div class="flex-grow-1" style="min-width: 220px;">
+                <label asp-for="Input.FullName" class="visually-hidden"></label>
+                <input asp-for="Input.FullName" class="form-control" autocomplete="name" />
+                <span asp-validation-for="Input.FullName" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-outline-secondary">Save</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body p-4">
+        <h2 class="h6 text-uppercase text-muted mb-3">Email address</h2>
+        <form method="post" asp-page-handler="UpdateEmail" class="d-flex flex-wrap gap-2 align-items-start">
+            <div class="flex-grow-1" style="min-width: 220px;">
+                <label asp-for="Input.Email" class="visually-hidden"></label>
+                <input asp-for="Input.Email" class="form-control" autocomplete="email" />
+                <div class="form-text">This is also what you use to sign in.</div>
+                <span asp-validation-for="Input.Email" class="text-danger"></span>
+            </div>
+            <button type="submit" class="btn btn-outline-secondary">Save</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-4 d-flex flex-wrap gap-2 justify-content-between align-items-center">
+        <div>
+            <h2 class="h6 text-uppercase text-muted mb-1">Password</h2>
+            <p class="mb-0 text-muted">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</p>
+        </div>
+        <a asp-page="/ChangePassword" class="btn btn-outline-secondary">Change password</a>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
