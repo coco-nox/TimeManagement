@@ -30,7 +30,7 @@ public static class ColourPalettes
         new ColourPalette
         {
             Id = "default",
-            Name = "TimeManage",
+            Name = "FlightPath",
             Description = "Warm sage and terracotta, calm and earthy.",
             Swatch1 = "#F2E8D9", Swatch2 = "#DFA477", Swatch3 = "#6B7F6B"
         },
