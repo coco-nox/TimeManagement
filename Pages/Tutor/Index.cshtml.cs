@@ -597,9 +597,19 @@ public class IndexModel(
             return NotFound();
         }
 
-        var sourceDocuments = assessment.Documents
+        // Pools documents from every Quiz- or Test-category assessment in
+        // the course, not just the one selected - a Test assessment's
+        // practice material is just as good a source for quiz questions as
+        // a Quiz one, so nothing relevant gets left out just because of
+        // which assessment a document happened to be filed under. courseId
+        // is already proven to belong to this user via LoadOwnedAssessmentAsync
+        // above, so no further ownership check is needed here.
+        var sourceDocuments = await _db.Documents
+            .Where(d => d.Assessment != null
+                && d.Assessment.CourseId == courseId
+                && (d.Assessment.Category == AssessmentCategory.Quiz || d.Assessment.Category == AssessmentCategory.Test))
             .Select(d => new TutorSourceDocument(d.OriginalFileName, d.ExtractedText))
-            .ToList();
+            .ToListAsync();
 
         var result = await _quizGenerationService.GenerateAsync(sourceDocuments);
 

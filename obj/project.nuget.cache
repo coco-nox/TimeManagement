@@ -1,15 +1,17 @@
 {
   "version": 2,
-  "dgSpecHash": "gpMNoxj4UWQ=",
+  "dgSpecHash": "zvVfDlQkhz0=",
   "success": true,
-  "projectFilePath": "C:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
+  "projectFilePath": "c:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
   "expectedPackageFiles": [
+    "C:\\Users\\cdcha\\.nuget\\packages\\bouncycastle.cryptography\\2.6.2\\bouncycastle.cryptography.2.6.2.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\documentformat.openxml\\3.5.1\\documentformat.openxml.3.5.1.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\documentformat.openxml.framework\\3.5.1\\documentformat.openxml.framework.3.5.1.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\humanizer.core\\2.14.1\\humanizer.core.2.14.1.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\itext\\9.7.0\\itext.9.7.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\itext.commons\\9.7.0\\itext.commons.9.7.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\itext7\\9.7.0\\itext7.9.7.0.nupkg.sha512",
+    "C:\\Users\\cdcha\\.nuget\\packages\\mailkit\\4.17.0\\mailkit.4.17.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.aspnetcore.identity.entityframeworkcore\\10.0.12\\microsoft.aspnetcore.identity.entityframeworkcore.10.0.12.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.aspnetcore.mvc.razor.extensions\\6.0.0\\microsoft.aspnetcore.mvc.razor.extensions.6.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.aspnetcore.mvc.razor.runtimecompilation\\10.0.12\\microsoft.aspnetcore.mvc.razor.runtimecompilation.10.0.12.nupkg.sha512",
@@ -33,6 +35,7 @@
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.entityframeworkcore.sqlite.core\\10.0.12\\microsoft.entityframeworkcore.sqlite.core.10.0.12.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.extensions.dependencymodel\\10.0.12\\microsoft.extensions.dependencymodel.10.0.12.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.visualstudio.solutionpersistence\\1.0.52\\microsoft.visualstudio.solutionpersistence.1.0.52.nupkg.sha512",
+    "C:\\Users\\cdcha\\.nuget\\packages\\mimekit\\4.17.0\\mimekit.4.17.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\mono.texttemplating\\3.0.0\\mono.texttemplating.3.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\newtonsoft.json\\13.0.4\\newtonsoft.json.13.0.4.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\sqlitepclraw.bundle_e_sqlite3\\2.1.12\\sqlitepclraw.bundle_e_sqlite3.2.1.12.nupkg.sha512",
@@ -46,7 +49,8 @@
     "C:\\Users\\cdcha\\.nuget\\packages\\system.composition.hosting\\9.0.0\\system.composition.hosting.9.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\system.composition.runtime\\9.0.0\\system.composition.runtime.9.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\system.composition.typedparts\\9.0.0\\system.composition.typedparts.9.0.0.nupkg.sha512",
-    "C:\\Users\\cdcha\\.nuget\\packages\\system.io.packaging\\10.0.2\\system.io.packaging.10.0.2.nupkg.sha512"
+    "C:\\Users\\cdcha\\.nuget\\packages\\system.io.packaging\\10.0.2\\system.io.packaging.10.0.2.nupkg.sha512",
+    "C:\\Users\\cdcha\\.nuget\\packages\\system.security.cryptography.pkcs\\10.0.0\\system.security.cryptography.pkcs.10.0.0.nupkg.sha512"
   ],
   "logs": []
 }

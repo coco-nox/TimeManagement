@@ -42,8 +42,13 @@ public class IndexModel(
     [BindProperty]
     public IFormFile? UploadedFile { get; set; }
 
+    /// <summary>The category the student explicitly picked, if any. Null
+    /// means "Auto-detect" (the default) - see OnPostUploadAsync, which
+    /// falls back to DocumentCategorizationService's suggestion when this
+    /// is null rather than requiring the student to know each file's type
+    /// up front.</summary>
     [BindProperty]
-    public AssessmentCategory UploadCategory { get; set; } = AssessmentCategory.Coursework;
+    public AssessmentCategory? UploadCategory { get; set; }
 
     private static readonly string[] KnownTabs = ["upload", "preferences"];
 
@@ -181,9 +186,16 @@ public class IndexModel(
         // can't collide on the same filename, and we never have to trust
         // characters from user input inside a file system path.
         var storedFileName = $"{Guid.NewGuid()}{extension}";
-        var categoryFolder = GetCategoryFolder(course.Id, UploadCategory);
-        Directory.CreateDirectory(categoryFolder);
-        var filePath = Path.Combine(categoryFolder, storedFileName);
+
+        // Saved into the course's root folder first, not straight into a
+        // category subfolder - when UploadCategory is null (Auto-detect,
+        // the default), the category itself isn't known until after the
+        // text below is extracted and categorised, so there's nowhere
+        // final to put it yet. It's moved into the right subfolder once
+        // finalCategory is settled below.
+        var courseFolder = GetCourseFolder(course.Id);
+        Directory.CreateDirectory(courseFolder);
+        var stagingPath = Path.Combine(courseFolder, storedFileName);
 
         // Scoped explicitly (not a using-declaration) so the write stream -
         // opened exclusively, since FileMode.Create defaults to FileShare.None -
@@ -192,14 +204,14 @@ public class IndexModel(
         // locked) until the end of this method, making every extraction
         // attempt fail with a file-in-use error that TryExtractText's
         // catch-all silently swallows into "no text available".
-        await using (var fileStream = new FileStream(filePath, FileMode.Create))
+        await using (var fileStream = new FileStream(stagingPath, FileMode.Create))
         {
             await UploadedFile.CopyToAsync(fileStream);
         }
 
         // Best-effort text extraction: a failure here still leaves a
         // perfectly good upload, just with no extracted text.
-        var extractedText = TextExtractionService.TryExtractText(filePath, UploadedFile.FileName);
+        var extractedText = TextExtractionService.TryExtractText(stagingPath, UploadedFile.FileName);
 
         var assessmentTitle = Path.GetFileNameWithoutExtension(UploadedFile.FileName);
         if (string.IsNullOrWhiteSpace(assessmentTitle))
@@ -209,11 +221,22 @@ public class IndexModel(
 
         var categorisation = await _categorizationService.CategorizeAsync(extractedText ?? string.Empty);
 
+        // Whatever the student explicitly picked wins; otherwise trust the
+        // detector - this is what lets someone upload a batch of documents
+        // without having to know each one's exact type up front.
+        var wasCategoryChosenManually = UploadCategory.HasValue;
+        var finalCategory = UploadCategory ?? categorisation.Category;
+
+        var categoryFolder = GetCategoryFolder(course.Id, finalCategory);
+        Directory.CreateDirectory(categoryFolder);
+        var filePath = Path.Combine(categoryFolder, storedFileName);
+        System.IO.File.Move(stagingPath, filePath);
+
         var assessment = new Assessment
         {
             CourseId = course.Id,
             Title = assessmentTitle,
-            Category = UploadCategory,
+            Category = finalCategory,
             DueDate = categorisation.DueDate,
             DueDateConfirmed = categorisation.DueDate != null,
             CreatedUtc = DateTime.UtcNow
@@ -244,7 +267,9 @@ public class IndexModel(
         _db.Documents.Add(document);
         await _db.SaveChangesAsync();
 
-        StatusMessage = $"\"{document.OriginalFileName}\" was uploaded and assigned to \"{assessment.Title}\".";
+        StatusMessage = wasCategoryChosenManually
+            ? $"\"{document.OriginalFileName}\" was uploaded and assigned to \"{assessment.Title}\" ({finalCategory})."
+            : $"\"{document.OriginalFileName}\" was uploaded and auto-categorised as {finalCategory} (\"{assessment.Title}\").";
         return RedirectToPage(new { courseId, tab = "upload" });
     }
 
@@ -362,6 +387,40 @@ public class IndexModel(
 
         StatusMessage = $"\"{assessment.Title}\" was deleted.";
         return RedirectToPage(new { courseId, tab = "preferences" });
+    }
+
+    /// <summary>
+    /// Deletes an entire course - every assessment, document, chat message,
+    /// checklist item and quiz attempt that belongs to it, both the database
+    /// rows (cascade-deleted via the FK configuration in
+    /// ApplicationDbContext once the Course row is removed) and every file
+    /// on disk, in one go. Unlike <see cref="OnPostDeleteAssessmentAsync"/>,
+    /// this doesn't need to walk each assessment's own category folder -
+    /// every one of a course's files lives somewhere under its single
+    /// course-level folder (see GetCourseFolder), so removing that whole
+    /// folder tree covers all of them at once.
+    /// </summary>
+    public async Task<IActionResult> OnPostDeleteCourseAsync(int courseId)
+    {
+        var course = await LoadOwnedCourseAsync(courseId);
+        if (course == null)
+        {
+            return NotFound();
+        }
+
+        var courseFolder = GetCourseFolder(course.Id);
+        if (Directory.Exists(courseFolder))
+        {
+            Directory.Delete(courseFolder, recursive: true);
+        }
+
+        _db.Courses.Remove(course);
+        await _db.SaveChangesAsync();
+
+        StatusMessage = $"\"{course.Title}\" and everything in it was deleted.";
+
+        // The course no longer exists, so there's nothing left to select.
+        return RedirectToPage();
     }
 
     /// <summary>

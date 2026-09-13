@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace TimeManagement.Services;
@@ -15,9 +16,13 @@ namespace TimeManagement.Services;
 /// third AI integration. Questions are generated on demand and never stored -
 /// only a student's answers (QuizAttempt rows) are persisted.
 /// </summary>
-public sealed partial class QuizGenerationService(HttpClient httpClient, IOptions<DocumentCategorizationOptions> options)
+public sealed partial class QuizGenerationService(
+    HttpClient httpClient,
+    IOptions<DocumentCategorizationOptions> options,
+    ILogger<QuizGenerationService> logger)
 {
     private readonly HttpClient _httpClient = httpClient;
+    private readonly ILogger<QuizGenerationService> _logger = logger;
     private readonly DocumentCategorizationOptions _options = options.Value;
 
     // Same budget reasoning as TutorChatService.BuildContext.
@@ -104,6 +109,15 @@ public sealed partial class QuizGenerationService(HttpClient httpClient, IOption
 
                 return new QuizGenerationResult([], "The AI tutor is being rate-limited right now. Please wait a moment and try again.");
             }
+
+            // Logged (not shown to the student) so the real cause - a bad
+            // model name, quota issue, or Gemini itself being overloaded -
+            // is visible in the server console instead of only ever showing
+            // as a generic HTTP status in the UI.
+            var failureBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Quiz generation request to Gemini failed with HTTP {StatusCode}. Response body: {Body}",
+                (int)response.StatusCode, failureBody);
 
             return new QuizGenerationResult([], $"The quiz request failed (HTTP {(int)response.StatusCode}). Please try again.");
         }

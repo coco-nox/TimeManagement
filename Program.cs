@@ -84,6 +84,15 @@ builder.Services.AddHttpClient<TutorChatService>();
 builder.Services.AddHttpClient<QuizGenerationService>();
 
 // ---------------------------------------------------------------------
+// Email: Gmail SMTP via MailKit, for password reset links. Address/AppPassword
+// live in user-secrets locally (dotnet user-secrets set Email:Address ... /
+// Email:AppPassword ...) - never appsettings.json, since an app password is
+// a real credential.
+// ---------------------------------------------------------------------
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.AddTransient<EmailSender>();
+
+// ---------------------------------------------------------------------
 // Razor Pages: page routing plus the folder-level sign-in requirement.
 // ---------------------------------------------------------------------
 var razorPagesBuilder = builder.Services.AddRazorPages(options =>
