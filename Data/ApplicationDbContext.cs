@@ -27,6 +27,12 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<WeeklyCheckIn> WeeklyCheckIns => Set<WeeklyCheckIn>();
 
+    public DbSet<AvailabilityBlock> AvailabilityBlocks => Set<AvailabilityBlock>();
+
+    public DbSet<StudyPreference> StudyPreferences => Set<StudyPreference>();
+
+    public DbSet<CourseHoursPreference> CourseHoursPreferences => Set<CourseHoursPreference>();
+
     // Column constraints and relationships for every entity in the app.
     // EF Core would infer reasonable defaults without this, but being
     // explicit here (max lengths, required-ness, cascade deletes) is what
@@ -93,10 +99,13 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         });
 
         // A checklist item belongs to one (Report) assessment; deleting the
-        // assessment deletes its checklist items too.
+        // assessment deletes its checklist items too. 300 (not the original
+        // 200) because ReportChecklistGenerationService's items name both a
+        // section and its specific rubric requirement, not just a bare
+        // section label.
         builder.Entity<AssessmentChecklistItem>(item =>
         {
-            item.Property(i => i.Description).HasMaxLength(200).IsRequired();
+            item.Property(i => i.Description).HasMaxLength(300).IsRequired();
             item.HasIndex(i => i.AssessmentId);
             // Speeds up "find this assessment's active (unarchived) session".
             item.HasIndex(i => new { i.AssessmentId, i.ArchivedUtc });
@@ -150,6 +159,51 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             checkIn.HasOne(c => c.User)
                 .WithMany()
                 .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // One row per painted hour cell. The unique index is what actually
+        // guarantees "one kind per cell" at the database layer - the paint
+        // handler in Pages/Calendar/Index.cshtml.cs always updates this row
+        // in place rather than inserting a second one, but the index means
+        // that's enforced even if a future bug tried to insert a duplicate.
+        builder.Entity<AvailabilityBlock>(block =>
+        {
+            block.HasIndex(b => new { b.UserId, b.Date, b.Hour }).IsUnique();
+
+            block.HasOne(b => b.User)
+                .WithMany()
+                .HasForeignKey(b => b.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // One row per user - the unique index enforces that at the database
+        // layer the same way AvailabilityBlock's does.
+        builder.Entity<StudyPreference>(preference =>
+        {
+            preference.Property(p => p.StudyDays).HasMaxLength(50).IsRequired();
+            preference.HasIndex(p => p.UserId).IsUnique();
+
+            preference.HasOne(p => p.User)
+                .WithMany()
+                .HasForeignKey(p => p.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // One row per (user, course). Deleting a course deletes its hours
+        // preference too, same cascade reasoning as everywhere else.
+        builder.Entity<CourseHoursPreference>(courseHours =>
+        {
+            courseHours.HasIndex(c => new { c.UserId, c.CourseId }).IsUnique();
+
+            courseHours.HasOne(c => c.User)
+                .WithMany()
+                .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            courseHours.HasOne(c => c.Course)
+                .WithMany()
+                .HasForeignKey(c => c.CourseId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

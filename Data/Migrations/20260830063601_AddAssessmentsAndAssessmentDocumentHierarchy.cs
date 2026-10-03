@@ -22,8 +22,8 @@ public partial class AddAssessmentsAndAssessmentDocumentHierarchy : Migration
 
         migrationBuilder.RenameIndex(
             name: "IX_Documents_CourseId",
-            table: "Documents",
-            newName: "IX_Documents_AssessmentId");
+            newName: "IX_Documents_AssessmentId",
+            table: "Documents");
 
         migrationBuilder.CreateTable(
             name: "Assessments",
@@ -35,7 +35,7 @@ public partial class AddAssessmentsAndAssessmentDocumentHierarchy : Migration
                 Title = table.Column<string>(type: "TEXT", maxLength: 200, nullable: false),
                 Category = table.Column<int>(type: "INTEGER", nullable: false),
                 DueDate = table.Column<DateTime>(type: "TEXT", nullable: true),
-                DueDateConfirmed = table.Column<bool>(type: "INTEGER", defaultValue: false, nullable: false),
+                DueDateConfirmed = table.Column<bool>(type: "INTEGER", nullable: false, defaultValue: false),
                 CreatedUtc = table.Column<DateTime>(type: "TEXT", nullable: false)
             },
             constraints: table =>
@@ -95,8 +95,8 @@ public partial class AddAssessmentsAndAssessmentDocumentHierarchy : Migration
 
         migrationBuilder.RenameIndex(
             name: "IX_Documents_AssessmentId",
-            table: "Documents",
-            newName: "IX_Documents_CourseId");
+            newName: "IX_Documents_CourseId",
+            table: "Documents");
 
         migrationBuilder.AddForeignKey(
             name: "FK_Documents_Courses_CourseId",

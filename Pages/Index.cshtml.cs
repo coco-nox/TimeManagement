@@ -112,13 +112,12 @@ public class IndexModel(ApplicationDbContext db, UserManager<ApplicationUser> us
             .Select(a => a.DueDate!.Value.Date)
             .ToHashSet();
 
-        return Enumerable.Range(0, 7)
+        return [.. Enumerable.Range(0, 7)
             .Select(offset =>
             {
                 var date = monday.AddDays(offset);
                 return new DashboardWeekDay(date, date == today, dueDates.Contains(date));
-            })
-            .ToList();
+            })];
     }
 }
 

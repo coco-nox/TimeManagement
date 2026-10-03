@@ -19,12 +19,14 @@ public class IndexModel(
     ApplicationDbContext db,
     UserManager<ApplicationUser> userManager,
     IWebHostEnvironment environment,
-    DocumentCategorizationService categorizationService) : PageModel
+    DocumentCategorizationService categorizationService,
+    ReportChecklistGenerationService reportChecklistService) : PageModel
 {
     private readonly ApplicationDbContext _db = db;
     private readonly UserManager<ApplicationUser> _userManager = userManager;
     private readonly IWebHostEnvironment _environment = environment;
     private readonly DocumentCategorizationService _categorizationService = categorizationService;
+    private readonly ReportChecklistGenerationService _reportChecklistService = reportChecklistService;
 
     // The only file types we know how to store and (try to) read text
     // from. Anything else is rejected before it touches the disk.
@@ -245,12 +247,19 @@ public class IndexModel(
         _db.Assessments.Add(assessment);
         await _db.SaveChangesAsync();
 
-        // Report assessments get the Report tab's default checklist as soon
-        // as they exist, so there's something to show the first time a
-        // student opens the Report tab for it.
+        // Report assessments get a checklist as soon as they exist, so
+        // there's something to show the first time a student opens the
+        // Report tab for it - tailored to this document's own rubric/brief
+        // where the AI can read one, falling back to standard sections
+        // otherwise (see ReportChecklistGenerationService).
         if (assessment.Category == AssessmentCategory.Report)
         {
-            _db.AssessmentChecklistItems.AddRange(AssessmentChecklistItem.CreateDefaultSet(assessment.Id));
+            var checklistItems = await _reportChecklistService.BuildChecklistAsync(
+                assessment.Id,
+                course.Title,
+                assessment.Title,
+                [new TutorSourceDocument(UploadedFile.FileName, extractedText)]);
+            _db.AssessmentChecklistItems.AddRange(checklistItems);
             await _db.SaveChangesAsync();
         }
 
@@ -312,6 +321,40 @@ public class IndexModel(
 
         StatusMessage = $"\"{assessment.Title}\" was moved to {category}.";
         return RedirectToPage(new { courseId, tab = "preferences" });
+    }
+
+    /// <summary>
+    /// Manually flips an assessment's IsCompleted, the only completion path
+    /// Quiz/Test assessments have at all (Report gets one automatically from
+    /// its checklist - see Pages/Tutor/Index.cshtml.cs OnPostToggleChecklistItemAsync -
+    /// but nothing does the equivalent for the other two categories). Only
+    /// offered once an assessment's due date has passed (see the Upload
+    /// tab), and reversible, the same "manual override, easy to undo" shape
+    /// as the rest of the app rather than a one-way action.
+    /// </summary>
+    public async Task<IActionResult> OnPostToggleAssessmentCompleteAsync(int courseId, int assessmentId)
+    {
+        var course = await LoadOwnedCourseAsync(courseId);
+        if (course == null)
+        {
+            return NotFound();
+        }
+
+        var assessment = course.Assessments.FirstOrDefault(a => a.Id == assessmentId);
+        if (assessment == null)
+        {
+            return NotFound();
+        }
+
+        assessment.IsCompleted = !assessment.IsCompleted;
+        assessment.CompletedUtc = assessment.IsCompleted ? DateTime.UtcNow : null;
+        await _db.SaveChangesAsync();
+
+        StatusMessage = assessment.IsCompleted
+            ? $"\"{assessment.Title}\" was marked complete."
+            : $"\"{assessment.Title}\" was marked incomplete.";
+
+        return RedirectToPage(new { courseId, tab = "upload" });
     }
 
     public async Task<IActionResult> OnPostDeleteDocumentAsync(int courseId, int documentId)
@@ -427,10 +470,23 @@ public class IndexModel(
     /// A real, simple stand-in for progress until actual checklists (Report)
     /// and quiz results (Quiz/Test) exist: how much of the time between an
     /// assessment being added and its due date has elapsed. Null percent
-    /// means there's nothing to show a bar for (no due date yet).
+    /// means there's nothing to show a bar for (no due date yet). Checked
+    /// first, ahead of the due-date math below, so a completed assessment
+    /// always reads as done instead of "Overdue" once its date has passed -
+    /// see OnPostToggleAssessmentCompleteAsync, the manual completion path
+    /// for assessments (Quiz/Test especially) that have no other way to
+    /// ever reach IsCompleted.
     /// </summary>
     public AssessmentProgress GetProgress(Assessment assessment)
     {
+        if (assessment.IsCompleted)
+        {
+            var completedLabel = assessment.CompletedUtc.HasValue
+                ? $"Completed {assessment.CompletedUtc.Value:d MMM yyyy}"
+                : "Completed";
+            return new AssessmentProgress(100, completedLabel, "bg-success");
+        }
+
         if (!assessment.DueDate.HasValue)
         {
             return new AssessmentProgress(

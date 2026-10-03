@@ -70,18 +70,21 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 // ---------------------------------------------------------------------
-// AI provider: Gemini config (key/endpoint/model) plus the two typed
+// AI provider: Gemini config (key/endpoint/model) plus the typed
 // HttpClients that call it - one per AI feature (document categorisation,
-// Tutor chat).
+// Tutor chat, quiz generation, calendar scheduling, report checklists).
 // ---------------------------------------------------------------------
 builder.Services.Configure<DocumentCategorizationOptions>(builder.Configuration.GetSection("Gemini"));
 builder.Services.AddHttpClient<DocumentCategorizationService>();
 
-// TutorChatService and QuizGenerationService reuse the same
+// TutorChatService, QuizGenerationService, CalendarSchedulingService, and
+// ReportChecklistGenerationService reuse the same
 // DocumentCategorizationOptions/endpoint above - each is another typed
 // client for the same AI provider, not a separate integration.
 builder.Services.AddHttpClient<TutorChatService>();
 builder.Services.AddHttpClient<QuizGenerationService>();
+builder.Services.AddHttpClient<CalendarSchedulingService>();
+builder.Services.AddHttpClient<ReportChecklistGenerationService>();
 
 // ---------------------------------------------------------------------
 // Email: Gmail SMTP via MailKit, for password reset links. Address/AppPassword

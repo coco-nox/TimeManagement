@@ -6419,7 +6419,6 @@ C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagem
 C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagement\f147fe24-356f-4490-b4dc-5c1be309f5b6\scratchpad\buildcheck5\refs\System.Xml.XPath.dll
 C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagement\f147fe24-356f-4490-b4dc-5c1be309f5b6\scratchpad\buildcheck5\refs\System.Xml.XPath.XDocument.dll
 C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagement\f147fe24-356f-4490-b4dc-5c1be309f5b6\scratchpad\buildcheck5\refs\WindowsBase.dll
-C:\Users\cdcha\source\repos\TimeManagement\obj\Debug\net10.0\compressed\urkklmo451-{0}-anq6hni17c-anq6hni17c.gz
 C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagement\f147fe24-356f-4490-b4dc-5c1be309f5b6\scratchpad\buildcheck6\appsettings.Development.json
 C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagement\f147fe24-356f-4490-b4dc-5c1be309f5b6\scratchpad\buildcheck6\appsettings.json
 C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagement\f147fe24-356f-4490-b4dc-5c1be309f5b6\scratchpad\buildcheck6\TimeManagement.staticwebassets.runtime.json
@@ -8320,3 +8319,4 @@ C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagem
 C:\Users\cdcha\source\repos\TimeManagement\bin\Debug\net10.0\BouncyCastle.Cryptography.dll
 C:\Users\cdcha\source\repos\TimeManagement\bin\Debug\net10.0\MailKit.dll
 C:\Users\cdcha\source\repos\TimeManagement\bin\Debug\net10.0\MimeKit.dll
+C:\Users\cdcha\source\repos\TimeManagement\obj\Debug\net10.0\compressed\urkklmo451-{0}-6ka1vt6k5p-6ka1vt6k5p.gz

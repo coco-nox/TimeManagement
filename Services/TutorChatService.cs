@@ -8,10 +8,18 @@ using Microsoft.Extensions.Options;
 namespace TimeManagement.Services;
 
 /// <summary>
-/// Answers a student's question about a course using only the extracted
-/// text of that course's uploaded documents. Reuses the same AI provider
-/// config as <see cref="DocumentCategorizationService"/> (same appsettings.json
-/// "Gemini" section, same HTTP endpoint) rather than a second AI integration.
+/// Answers a student's question about a course like an actual tutor would:
+/// grounded in that course's uploaded Coursework-category documents (see
+/// Pages/Tutor/Index.cshtml.cs OnPostAskAsync, which builds the document
+/// list this service receives - Report/Quiz/Test attachments are left out
+/// so an answer can't be built on material the class hasn't reached yet)
+/// when they're relevant, but not limited to quoting them. The model is
+/// free to use its own broader knowledge to explain, simplify, give
+/// examples, and answer related questions the documents don't cover - see
+/// the system instruction in AskAsync for the actual ground rules. Reuses
+/// the same AI provider config as <see cref="DocumentCategorizationService"/>
+/// (same appsettings.json "Gemini" section, same HTTP endpoint) rather than
+/// a second AI integration.
 /// </summary>
 public sealed partial class TutorChatService(HttpClient httpClient, IOptions<DocumentCategorizationOptions> options)
 {
@@ -47,16 +55,13 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
         }
 
         // Only documents with successfully extracted text are useful here -
-        // a document with none would just add noise to the prompt.
+        // a document with none would just add noise to the prompt. Having
+        // none at all is no longer a dead end (see BuildPrompt): the tutor
+        // just answers from its own subject knowledge instead of refusing.
         var usableDocuments = documents.Where(d => !string.IsNullOrWhiteSpace(d.ExtractedText)).ToList();
-        if (usableDocuments.Count == 0)
-        {
-            return new TutorChatResult(
-                "This course has no documents with readable text yet, so I don't have anything to answer from.",
-                null);
-        }
-
-        var (context, wasTruncated) = BuildContext(usableDocuments);
+        var (context, wasTruncated) = usableDocuments.Count > 0
+            ? BuildContext(usableDocuments)
+            : (string.Empty, false);
         var prompt = BuildPrompt(question, context, wasTruncated);
 
         // Gemini's generateContent request shape: a system instruction
@@ -69,12 +74,28 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
                 {
                     new
                     {
-                        text = "You are a course tutor. Answer the student's question using ONLY the supplied " +
-                               "document excerpts - never your own general knowledge, even if you know the answer. " +
-                               "If the excerpts don't contain anything relevant, say so plainly instead of guessing. " +
+                        text = "You are this student's course tutor - your job is to help them actually understand " +
+                               "the subject, not just retrieve text. When course document excerpts are supplied, " +
+                               "treat them as the source of truth for what this course specifically teaches and how " +
+                               "it approaches the topic - ground your answer in them where they're relevant, and " +
+                               "stay consistent with the course's own terminology and approach. But you are never " +
+                               "limited to only what's in the excerpts: use your own broader subject knowledge " +
+                               "freely to explain concepts clearly, fill in context the excerpts don't cover, and " +
+                               "answer follow-up questions that are related to the topic but not mentioned in the " +
+                               "documents at all. If a document doesn't cover the question, or none were supplied, " +
+                               "answer from your own knowledge instead of saying you can't help. Never just copy or " +
+                               "closely paraphrase sentences out of the excerpts - always teach the idea in your own " +
+                               "words, the way a tutor explains something out loud, not the way a textbook reads. " +
+                               "When the student asks you to simplify something, rephrase it, or give an example, " +
+                               "always actually do it - never decline or say you're only able to use the documents. " +
+                               "Stay focused on the subject the student is studying rather than drifting into " +
+                               "unrelated territory. Format the answer for readability instead of one long " +
+                               "paragraph: break it into short paragraphs separated by a blank line, and use \"- \" " +
+                               "bullet points whenever you're listing multiple facts, steps, or examples. " +
                                "Return only valid JSON with keys \"answer\" and \"source\". \"answer\" is your reply " +
-                               "as plain text. \"source\" is the exact source filename the answer was drawn from, " +
-                               "or null if you found nothing relevant."
+                               "as plain text (using \\n for line breaks). \"source\" is the exact filename of a " +
+                               "supplied document your answer was substantially drawn from, or null if your answer " +
+                               "mainly came from your own general knowledge rather than a specific document."
                     }
                 }
             },
@@ -183,14 +204,24 @@ public sealed partial class TutorChatService(HttpClient httpClient, IOptions<Doc
     }
 
     // Combines the document context and the student's question into the
-    // single user-turn prompt text sent to Gemini.
+    // single user-turn prompt text sent to Gemini. With no context at all
+    // (no Coursework documents uploaded, or none with readable text), the
+    // question is sent on its own - the system instruction already tells
+    // the model to answer from its own knowledge in that case rather than
+    // treating an empty excerpts section as "nothing to answer from".
     private static string BuildPrompt(string question, string context, bool wasTruncated)
     {
+        if (string.IsNullOrEmpty(context))
+        {
+            return "No course documents have been uploaded for this course yet - answer from your own subject " +
+                   "knowledge.\n\nStudent question:\n" + question.Trim();
+        }
+
         var truncationNote = wasTruncated
             ? "\n(Note: the supplied excerpts were trimmed to fit a length limit and may not be complete.)\n"
             : string.Empty;
 
-        return "Course document excerpts:\n\n" + context + truncationNote +
+        return "Course document excerpts (what this course has actually taught so far):\n\n" + context + truncationNote +
                "\nStudent question:\n" + question.Trim();
     }
 

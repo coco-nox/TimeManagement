@@ -1,0 +1,316 @@
+@page
+@using TimeManagement.Models
+@model TimeManagement.Pages.Calendar.IndexModel
+@{
+    ViewData["Title"] = "Calendar";
+    var weekEnd = Model.WeekStart.AddDays(6);
+}
+
+<h1 class="h3 mb-1">Calendar</h1>
+<p class="text-muted">Paint the hours you're available (or blocked off) each week, and set the study preferences the AI scheduler will use.</p>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a asp-page="/Calendar/Index" asp-route-weekOffset="@Model.WeekOffset" asp-route-tab="week"
+           class="nav-link @(Model.ActiveTab == "week" ? "active" : "")">Week</a>
+    </li>
+    <li class="nav-item">
+        <a asp-page="/Calendar/Index" asp-route-tab="preferences"
+           class="nav-link @(Model.ActiveTab == "preferences" ? "active" : "")">Preferences</a>
+    </li>
+</ul>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success py-2">@Model.StatusMessage</div>
+}
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="alert alert-danger py-2">@Model.ErrorMessage</div>
+}
+
+@* Shared antiforgery token for the Week tab's fetch() calls - mirrors the
+   Tutor page's hidden #tutorAntiForgeryForm pattern. *@
+<form id="calendarAntiForgeryForm" style="display:none;">@Html.AntiForgeryToken()</form>
+
+@if (Model.ActiveTab == "week")
+{
+    <div class="calendar-toolbar">
+        <div class="calendar-week-nav">
+            <a asp-page="/Calendar/Index" asp-route-weekOffset="@(Model.WeekOffset - 1)" asp-route-tab="week" class="btn btn-outline-secondary btn-sm">&larr; Previous week</a>
+            <span class="fw-semibold">@Model.WeekStart.ToString("d MMM") &ndash; @weekEnd.ToString("d MMM yyyy")</span>
+            <a asp-page="/Calendar/Index" asp-route-weekOffset="@(Model.WeekOffset + 1)" asp-route-tab="week" class="btn btn-outline-secondary btn-sm">Next week &rarr;</a>
+            @if (Model.WeekOffset != 0)
+            {
+                <a asp-page="/Calendar/Index" asp-route-weekOffset="0" asp-route-tab="week" class="small">This week</a>
+            }
+        </div>
+
+        <div class="d-flex align-items-center gap-3">
+            <div class="calendar-counts">
+                <span class="count-pill"><span class="count-dot available"></span><strong id="availableCount">@Model.AvailableHours</strong>&nbsp;hrs available</span>
+                <span class="count-pill"><span class="count-dot blocked"></span><strong id="blockedCount">@Model.BlockedHours</strong>&nbsp;hrs blocked</span>
+            </div>
+
+            <div class="calendar-mode-toggle" role="group" aria-label="Paint mode">
+                <button type="button" class="mode-btn active" data-mode="Available">Available</button>
+                <button type="button" class="mode-btn" data-mode="Blocked">Blocked</button>
+            </div>
+
+            <form method="post" asp-page-handler="GenerateSchedule" asp-route-weekOffset="@Model.WeekOffset"
+                  onsubmit="return confirm('Generate a study schedule for this week? This replaces any AI-generated sessions already on this week\'s calendar.');">
+                <button type="submit" class="btn btn-primary btn-sm">&#10024; Generate schedule</button>
+            </form>
+        </div>
+    </div>
+
+    <p class="text-muted small mb-2">Builds a plan from your available hours, your Preferences-tab settings, and your upcoming Report/Quiz/Test due dates - replaces this week's current plan rather than adding to it, so it stays in sync with anything you've since blocked off.</p>
+
+    <div class="calendar-legend">
+        <span><span class="legend-swatch available"></span>Available</span>
+        <span><span class="legend-swatch blocked"></span>Blocked</span>
+        <span><span class="legend-swatch scheduled"></span>Scheduled (fixed - manage from Course)</span>
+        <span>Click a cell to toggle it, or drag across several - painting the other mode over a cell replaces it.</span>
+    </div>
+
+    <div class="avail-grid-wrap">
+        <div class="avail-grid" id="availGrid" data-week-start="@Model.WeekStart.ToString("yyyy-MM-dd")">
+            <div class="avail-corner"></div>
+            @for (var d = 0; d < 7; d++)
+            {
+                var date = Model.WeekStart.AddDays(d);
+                var isToday = date.Date == DateTime.Today;
+                <div class="avail-day-head @(isToday ? "today" : "")">
+                    <div class="dow">@date.ToString("ddd")</div>
+                    <div class="dnum">@date.Day</div>
+                </div>
+            }
+
+            @for (var hour = TimeManagement.Pages.Calendar.IndexModel.GridStartHour; hour <= TimeManagement.Pages.Calendar.IndexModel.GridEndHour; hour++)
+            {
+                <div class="avail-hour-label">@DateTime.Today.AddHours(hour).ToString("h tt")</div>
+
+                @for (var d = 0; d < 7; d++)
+                {
+                    var date = Model.WeekStart.AddDays(d);
+                    var key = TimeManagement.Pages.Calendar.IndexModel.CellKey(date, hour);
+                    Model.CellsByKey.TryGetValue(key, out var cell);
+                    var state = cell?.State ?? "empty";
+
+                    if (state == "scheduled")
+                    {
+                        <div class="avail-cell scheduled" style="--folder-colour: @cell!.CourseColourHex" data-date="@date.ToString("yyyy-MM-dd")" data-hour="@hour" data-scheduled="true" title="@cell.Title (scheduled - manage from Course)">
+                            <span class="scheduled-title">@cell.Title</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="avail-cell @state" data-date="@date.ToString("yyyy-MM-dd")" data-hour="@hour" data-kind="@(state == "empty" ? "" : (state == "available" ? "Available" : "Blocked"))"></div>
+                    }
+                }
+            }
+        </div>
+    </div>
+}
+else
+{
+    <div class="calendar-pref-card">
+        <form method="post" asp-page-handler="SavePreferences">
+            <div class="mb-4">
+                <label for="totalWeeklyHours" class="form-label fw-semibold">Hours this week</label>
+                <div class="d-flex align-items-center gap-3">
+                    <input type="range" class="form-range" id="totalWeeklyHours" name="totalWeeklyHours" min="0" max="60" value="@Model.TotalWeeklyHours" oninput="document.getElementById('totalWeeklyHoursValue').textContent = this.value">
+                    <span id="totalWeeklyHoursValue" class="course-hours-value">@Model.TotalWeeklyHours</span>
+                </div>
+                <p class="text-muted small mb-0">How many hours total you want to study this week, across every course.</p>
+            </div>
+
+            <div class="mb-4">
+                <div class="form-label fw-semibold">Which days can you study?</div>
+                <div class="day-pill-group">
+                    @foreach (var day in StudyDayNames.All)
+                    {
+                        var isChecked = Model.SelectedStudyDays.Contains(day);
+                        <label class="day-pill">
+                            <input type="checkbox" name="selectedDays" value="@day" @(isChecked ? "checked" : "") />
+                            <span>@day</span>
+                        </label>
+                    }
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <div class="form-label fw-semibold">Hours per course</div>
+                @if (!Model.CourseHours.Any())
+                {
+                    <p class="text-muted small mb-0">You don't have any courses yet. <a asp-page="/Courses/Index">Add one</a> to allocate study hours to it.</p>
+                }
+                else
+                {
+                    <div class="d-flex flex-column gap-2">
+                        @foreach (var ch in Model.CourseHours)
+                        {
+                            <div class="course-hours-row">
+                                <span class="course-dot" style="background-color: @ch.ColourHex"></span>
+                                <span class="course-hours-name">@ch.Title</span>
+                                <input type="hidden" name="courseIds" value="@ch.CourseId" />
+                                <input type="range" class="form-range course-hours-slider" name="courseHoursPerWeek" min="0" max="20" value="@ch.HoursPerWeek" oninput="this.closest('.course-hours-row').querySelector('.course-hours-value').textContent = this.value">
+                                <span class="course-hours-value">@ch.HoursPerWeek</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save preferences</button>
+        </form>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        (function () {
+            var grid = document.getElementById('availGrid');
+            if (!grid) {
+                return;
+            }
+
+            var weekStart = grid.getAttribute('data-week-start');
+            var tokenInput = document.querySelector('#calendarAntiForgeryForm input[name="__RequestVerificationToken"]');
+            var availableCountEl = document.getElementById('availableCount');
+            var blockedCountEl = document.getElementById('blockedCount');
+            var modeButtons = document.querySelectorAll('.mode-btn');
+            var currentMode = 'Available';
+
+            modeButtons.forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    modeButtons.forEach(function (b) { b.classList.remove('active'); });
+                    btn.classList.add('active');
+                    currentMode = btn.getAttribute('data-mode');
+                });
+            });
+
+            function setCellVisual(cell, kind) {
+                cell.classList.remove('available', 'blocked', 'pending');
+                if (kind === 'Available') {
+                    cell.classList.add('available');
+                    cell.dataset.kind = 'Available';
+                } else if (kind === 'Blocked') {
+                    cell.classList.add('blocked');
+                    cell.dataset.kind = 'Blocked';
+                } else {
+                    cell.dataset.kind = '';
+                }
+            }
+
+            var isDragging = false;
+            var dragOutcome = 'set'; // 'set' paints currentMode, 'clear' erases - decided by the cell the drag started on.
+            var touched = new Map(); // "date_hour" -> element
+
+            function isPaintable(cell) {
+                return cell && cell.classList.contains('avail-cell') && cell.dataset.scheduled !== 'true';
+            }
+
+            function beginDrag(cell) {
+                isDragging = true;
+                touched.clear();
+                var existingKind = cell.dataset.kind || '';
+                dragOutcome = existingKind === currentMode ? 'clear' : 'set';
+                touchCell(cell);
+            }
+
+            function touchCell(cell) {
+                var key = cell.dataset.date + '_' + cell.dataset.hour;
+                if (touched.has(key)) {
+                    return;
+                }
+                touched.set(key, cell);
+                setCellVisual(cell, dragOutcome === 'clear' ? null : currentMode);
+                cell.classList.add('pending');
+            }
+
+            grid.addEventListener('mousedown', function (event) {
+                var cell = event.target.closest('.avail-cell');
+                if (!isPaintable(cell)) {
+                    return;
+                }
+                event.preventDefault();
+                beginDrag(cell);
+            });
+
+            grid.addEventListener('mouseover', function (event) {
+                if (!isDragging) {
+                    return;
+                }
+                var cell = event.target.closest('.avail-cell');
+                if (!isPaintable(cell)) {
+                    return;
+                }
+                touchCell(cell);
+            });
+
+            document.addEventListener('mouseup', function () {
+                if (!isDragging) {
+                    return;
+                }
+                isDragging = false;
+                if (touched.size === 0) {
+                    return;
+                }
+                savePaint(touched, dragOutcome);
+            });
+
+            function savePaint(cellsMap, outcome) {
+                var cells = [];
+                cellsMap.forEach(function (cell) {
+                    cells.push({ date: cell.dataset.date, hour: parseInt(cell.dataset.hour, 10) });
+                });
+
+                var formData = new FormData();
+                formData.append('weekStart', weekStart);
+                formData.append('kind', currentMode);
+                formData.append('outcome', outcome);
+                formData.append('cellsJson', JSON.stringify(cells));
+                if (tokenInput) {
+                    formData.append('__RequestVerificationToken', tokenInput.value);
+                }
+
+                fetch(window.location.pathname + '?handler=PaintCells', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Request failed with status ' + response.status);
+                        }
+                        return response.json();
+                    })
+                    .then(function (result) {
+                        result.results.forEach(function (r) {
+                            var cell = cellsMap.get(r.date + '_' + r.hour);
+                            if (!cell) {
+                                return;
+                            }
+                            cell.classList.remove('pending');
+                            setCellVisual(cell, r.kind === 'None' ? null : r.kind);
+                        });
+                        if (availableCountEl) {
+                            availableCountEl.textContent = result.availableHours;
+                        }
+                        if (blockedCountEl) {
+                            blockedCountEl.textContent = result.blockedHours;
+                        }
+                    })
+                    .catch(function () {
+                        // Revert every touched cell back to its pre-drag state
+                        // rather than leaving an optimistic paint that never saved.
+                        cellsMap.forEach(function (cell) {
+                            cell.classList.remove('pending');
+                        });
+                        alert('Something went wrong saving that. Please try again.');
+                        window.location.reload();
+                    });
+            }
+        })();
+    </script>
+}

@@ -69,7 +69,7 @@ public sealed partial class QuizGenerationService(
                 {
                     new
                     {
-                        text = $"You are a course tutor writing a multiple-choice quiz. Using ONLY the supplied " +
+                        text = "You are a course tutor writing a multiple-choice quiz. Using ONLY the supplied " +
                                "document excerpts, write exactly " + QuestionsPerBatch + " questions that test " +
                                "understanding of the material - never invent facts not in the excerpts. Each " +
                                "question needs exactly 4 answer options with exactly one correct answer, plus a " +

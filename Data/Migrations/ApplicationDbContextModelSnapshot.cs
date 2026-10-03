@@ -276,7 +276,7 @@ namespace TimeManagement.Data.Migrations
 
                     b.Property<string>("Description")
                         .IsRequired()
-                        .HasMaxLength(200)
+                        .HasMaxLength(300)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("IsCompleted")
@@ -292,6 +292,33 @@ namespace TimeManagement.Data.Migrations
                     b.HasIndex("AssessmentId", "ArchivedUtc");
 
                     b.ToTable("AssessmentChecklistItems");
+                });
+
+            modelBuilder.Entity("TimeManagement.Models.AvailabilityBlock", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Hour")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Date", "Hour")
+                        .IsUnique();
+
+                    b.ToTable("AvailabilityBlocks");
                 });
 
             modelBuilder.Entity("TimeManagement.Models.CalendarTask", b =>
@@ -414,6 +441,32 @@ namespace TimeManagement.Data.Migrations
                     b.ToTable("Courses");
                 });
 
+            modelBuilder.Entity("TimeManagement.Models.CourseHoursPreference", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CourseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("HoursPerWeek")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CourseId");
+
+                    b.HasIndex("UserId", "CourseId")
+                        .IsUnique();
+
+                    b.ToTable("CourseHoursPreferences");
+                });
+
             modelBuilder.Entity("TimeManagement.Models.Document", b =>
                 {
                     b.Property<int>("Id")
@@ -484,6 +537,32 @@ namespace TimeManagement.Data.Migrations
                     b.HasIndex("AssessmentId", "ArchivedUtc");
 
                     b.ToTable("QuizAttempts");
+                });
+
+            modelBuilder.Entity("TimeManagement.Models.StudyPreference", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StudyDays")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TotalWeeklyHours")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("StudyPreferences");
                 });
 
             modelBuilder.Entity("TimeManagement.Models.WeeklyCheckIn", b =>
@@ -592,6 +671,17 @@ namespace TimeManagement.Data.Migrations
                     b.Navigation("Assessment");
                 });
 
+            modelBuilder.Entity("TimeManagement.Models.AvailabilityBlock", b =>
+                {
+                    b.HasOne("TimeManagement.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TimeManagement.Models.CalendarTask", b =>
                 {
                     b.HasOne("TimeManagement.Models.Assessment", "Assessment")
@@ -640,6 +730,25 @@ namespace TimeManagement.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("TimeManagement.Models.CourseHoursPreference", b =>
+                {
+                    b.HasOne("TimeManagement.Models.Course", "Course")
+                        .WithMany()
+                        .HasForeignKey("CourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TimeManagement.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Course");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TimeManagement.Models.Document", b =>
                 {
                     b.HasOne("TimeManagement.Models.Assessment", "Assessment")
@@ -660,6 +769,17 @@ namespace TimeManagement.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Assessment");
+                });
+
+            modelBuilder.Entity("TimeManagement.Models.StudyPreference", b =>
+                {
+                    b.HasOne("TimeManagement.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("TimeManagement.Models.WeeklyCheckIn", b =>

@@ -20,12 +20,14 @@ public class IndexModel(
     ApplicationDbContext db,
     UserManager<ApplicationUser> userManager,
     TutorChatService tutorChatService,
-    QuizGenerationService quizGenerationService) : PageModel
+    QuizGenerationService quizGenerationService,
+    ReportChecklistGenerationService reportChecklistService) : PageModel
 {
     private readonly ApplicationDbContext _db = db;
     private readonly UserManager<ApplicationUser> _userManager = userManager;
     private readonly TutorChatService _tutorChatService = tutorChatService;
     private readonly QuizGenerationService _quizGenerationService = quizGenerationService;
+    private readonly ReportChecklistGenerationService _reportChecklistService = reportChecklistService;
 
     private static readonly string[] KnownTabs = ["chat", "report", "quiz"];
 
@@ -170,7 +172,7 @@ public class IndexModel(
                     .OrderBy(m => m.SentUtc)
                     .ToListAsync();
 
-                ArchivedConversations = archivedMessages
+                ArchivedConversations = [.. archivedMessages
                     .GroupBy(m => m.ConversationId)
                     .Select(g => new ArchivedConversationSummary(
                         g.Key,
@@ -178,8 +180,7 @@ public class IndexModel(
                         g.Max(m => m.ArchivedUtc!.Value),
                         g.Count(),
                         g.FirstOrDefault(m => m.Role == "user")?.Content))
-                    .OrderByDescending(s => s.ArchivedUtc)
-                    .ToList();
+                    .OrderByDescending(s => s.ArchivedUtc)];
             }
         }
         else
@@ -196,10 +197,9 @@ public class IndexModel(
 
     private async Task<IActionResult> LoadReportTabAsync(Course course, int? assessmentId, Guid? sessionId)
     {
-        ReportAssessments = course.Assessments
+        ReportAssessments = [.. course.Assessments
             .Where(a => a.Category == AssessmentCategory.Report)
-            .OrderBy(a => a.Title)
-            .ToList();
+            .OrderBy(a => a.Title)];
 
         if (!assessmentId.HasValue)
         {
@@ -231,15 +231,14 @@ public class IndexModel(
                     .Where(i => i.AssessmentId == assessment.Id && i.ArchivedUtc != null)
                     .ToListAsync();
 
-                ArchivedChecklistSessions = archivedItems
+                ArchivedChecklistSessions = [.. archivedItems
                     .GroupBy(i => i.SessionId)
                     .Select(g => new ArchivedChecklistSessionSummary(
                         g.Key,
                         g.Max(i => i.ArchivedUtc!.Value),
                         g.Count(i => i.IsCompleted),
                         g.Count()))
-                    .OrderByDescending(s => s.ArchivedUtc)
-                    .ToList();
+                    .OrderByDescending(s => s.ArchivedUtc)];
             }
         }
         else
@@ -253,10 +252,15 @@ public class IndexModel(
             // creation (see Courses/Index.cshtml.cs OnPostUpdateAssessmentCategoryAsync)
             // never had a checklist seeded for it. Seeding lazily here, rather
             // than only at creation time, means the Report tab is never a
-            // dead end for it.
+            // dead end for it - tailored to the assessment's own uploaded
+            // document(s) where the AI can find a rubric, same as at upload
+            // time (see ReportChecklistGenerationService).
             if (ChecklistItems.Count == 0)
             {
-                var seeded = AssessmentChecklistItem.CreateDefaultSet(assessment.Id);
+                var sourceDocuments = assessment.Documents
+                    .Select(d => new TutorSourceDocument(d.OriginalFileName, d.ExtractedText))
+                    .ToList();
+                var seeded = await _reportChecklistService.BuildChecklistAsync(assessment.Id, course.Title, assessment.Title, sourceDocuments);
                 _db.AssessmentChecklistItems.AddRange(seeded);
                 await _db.SaveChangesAsync();
                 ChecklistItems = seeded;
@@ -268,10 +272,9 @@ public class IndexModel(
 
     private async Task<IActionResult> LoadQuizTabAsync(Course course, int? assessmentId, Guid? sessionId)
     {
-        QuizAssessments = course.Assessments
+        QuizAssessments = [.. course.Assessments
             .Where(a => a.Category == AssessmentCategory.Quiz)
-            .OrderBy(a => a.Title)
-            .ToList();
+            .OrderBy(a => a.Title)];
 
         if (!assessmentId.HasValue)
         {
@@ -303,15 +306,14 @@ public class IndexModel(
                     .Where(a => a.AssessmentId == assessment.Id && a.ArchivedUtc != null)
                     .ToListAsync();
 
-                ArchivedQuizSessions = archivedAttempts
+                ArchivedQuizSessions = [.. archivedAttempts
                     .GroupBy(a => a.SessionId)
                     .Select(g => new ArchivedQuizSessionSummary(
                         g.Key,
                         g.Max(a => a.ArchivedUtc!.Value),
                         g.Count(a => a.IsCorrect),
                         g.Count()))
-                    .OrderByDescending(s => s.ArchivedUtc)
-                    .ToList();
+                    .OrderByDescending(s => s.ArchivedUtc)];
             }
         }
         else
@@ -368,9 +370,14 @@ public class IndexModel(
         });
         await _db.SaveChangesAsync();
 
-        // Every document belonging to any of this course's assessments -
-        // this is the full pool of text the AI is allowed to answer from.
+        // Only documents filed under the Coursework category - lecture
+        // notes/slides and general course material - not Report, Quiz, or
+        // Test attachments (assignment briefs, quiz banks, practice tests).
+        // Those can reference material the class hasn't reached yet, so
+        // pulling from them here could hand a student an answer built on
+        // something they haven't actually been taught.
         var sourceDocuments = course.Assessments
+            .Where(a => a.Category == AssessmentCategory.Coursework)
             .SelectMany(a => a.Documents)
             .Select(d => new TutorSourceDocument(d.OriginalFileName, d.ExtractedText))
             .ToList();
@@ -541,7 +548,15 @@ public class IndexModel(
             item.ArchivedUtc = archivedUtc;
         }
 
-        _db.AssessmentChecklistItems.AddRange(AssessmentChecklistItem.CreateDefaultSet(assessmentId));
+        // Regenerated fresh from the assessment's current documents rather
+        // than the fixed default set, same as the other seed points - picks
+        // up any document uploaded since the last checklist was built.
+        var sourceDocuments = assessment.Documents
+            .Select(d => new TutorSourceDocument(d.OriginalFileName, d.ExtractedText))
+            .ToList();
+        var freshItems = await _reportChecklistService.BuildChecklistAsync(
+            assessmentId, assessment.Course!.Title, assessment.Title, sourceDocuments);
+        _db.AssessmentChecklistItems.AddRange(freshItems);
 
         // The old session is gone and the new one starts unchecked, so the
         // assessment can't still be marked complete.
@@ -733,7 +748,7 @@ public class IndexModel(
 
     private static List<QuizTopicStat> BuildQuizStats(List<QuizAttempt> attempts)
     {
-        return attempts
+        return [.. attempts
             .GroupBy(a => a.Topic)
             .Select(g =>
             {
@@ -747,8 +762,7 @@ public class IndexModel(
                     total > 0 ? (int)Math.Round(correct * 100.0 / total) : 0,
                     wrong >= 2);
             })
-            .OrderBy(s => s.Topic)
-            .ToList();
+            .OrderBy(s => s.Topic)];
     }
 }
 

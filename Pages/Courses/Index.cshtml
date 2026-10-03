@@ -198,6 +198,8 @@
                                 @foreach (var assessment in assessments)
                                 {
                                     var progress = Model.GetProgress(assessment);
+                                    var isOverdue = assessment.DueDate.HasValue && assessment.DueDate.Value < DateTime.UtcNow;
+                                    var canToggleComplete = assessment.Category != AssessmentCategory.Coursework && isOverdue;
 
                                     <div class="list-group-item px-0 py-3">
                                         <div class="fw-semibold">
@@ -233,6 +235,20 @@
                                             <div class="mt-2 alert alert-warning py-2 px-3 mb-0" role="alert">
                                                 @progress.Label — update as soon as possible.
                                             </div>
+                                        }
+
+                                        @if (canToggleComplete)
+                                        {
+                                            <form method="post" asp-page-handler="ToggleAssessmentComplete" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id" class="mt-2">
+                                                @if (assessment.IsCompleted)
+                                                {
+                                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Mark incomplete</button>
+                                                }
+                                                else
+                                                {
+                                                    <button type="submit" class="btn btn-success btn-sm">Mark complete</button>
+                                                }
+                                            </form>
                                         }
 
                                         <details class="mt-2">

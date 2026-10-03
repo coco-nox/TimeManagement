@@ -1,10 +1,14 @@
 namespace TimeManagement.Models;
 
 /// <summary>
-/// One section of a Report-category assessment's completion checklist (e.g.
-/// "Introduction", "Testing"). Items are seeded in a default set whenever a
-/// Report assessment is created or a checklist session is archived - see
-/// <see cref="CreateDefaultSet"/> and Pages/Tutor/Index.cshtml.cs.
+/// One section of a Report-category assessment's completion checklist.
+/// Normally generated from the assessment's own uploaded rubric/brief and
+/// the course it belongs to (see Services/ReportChecklistGenerationService.cs),
+/// so an item usually names both a section and its specific requirement
+/// (e.g. "Testing: include unit tests and a documented test plan (20%)")
+/// rather than a bare label. <see cref="CreateDefaultSet"/> is the fallback
+/// used when there's nothing to generate from - no AI configured, no
+/// readable document, or the request fails.
 /// </summary>
 public class AssessmentChecklistItem
 {
@@ -46,14 +50,13 @@ public class AssessmentChecklistItem
     public static List<AssessmentChecklistItem> CreateDefaultSet(int assessmentId)
     {
         var sessionId = Guid.NewGuid();
-        return DefaultDescriptions
+        return [.. DefaultDescriptions
             .Select(description => new AssessmentChecklistItem
             {
                 AssessmentId = assessmentId,
                 Description = description,
                 IsCompleted = false,
                 SessionId = sessionId
-            })
-            .ToList();
+            })];
     }
 }

@@ -1,4 +1,5 @@
 @page
+@using TimeManagement.Services
 @model TimeManagement.Pages.Tutor.IndexModel
 @{
     ViewData["Title"] = "Tutor";
@@ -150,7 +151,7 @@
                                     {
                                         <div class="d-flex justify-content-start mb-2">
                                             <div class="bg-light rounded p-2" style="max-width: 75%;">
-                                                <div>@message.Content</div>
+                                                <div>@ChatAnswerFormatter.ToHtml(message.Content)</div>
                                                 @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
                                                 {
                                                     <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
@@ -216,7 +217,7 @@
                                     {
                                         <div class="d-flex justify-content-start mb-2">
                                             <div class="bg-light rounded p-2" style="max-width: 75%;">
-                                                <div>@message.Content</div>
+                                                <div>@ChatAnswerFormatter.ToHtml(message.Content)</div>
                                                 @if (!string.IsNullOrWhiteSpace(message.SourceDocument))
                                                 {
                                                     <div class="small text-muted mt-1">Source: @message.SourceDocument</div>
@@ -347,6 +348,7 @@
                         var percent = totalItems > 0 ? completedItems * 100 / totalItems : 0;
 
                         <div class="p-3">
+                            <p class="text-muted small">Built from this assessment's own uploaded brief/rubric where one was found, for @Model.SelectedCourse.Title - falls back to standard report sections otherwise.</p>
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="small text-muted" id="checklistProgressLabel">@completedItems of @totalItems sections complete</span>
                                 @if (Model.SelectedAssessment is { IsCompleted: true })
@@ -592,11 +594,59 @@
                 return bubble;
             }
 
+            // Mirrors Services/ChatAnswerFormatter.cs on the server: turns the
+            // same plain-text conventions (blank-line paragraphs, "- "/"* "
+            // bullets, "1. " numbered lines, "**bold**") into real HTML
+            // elements, so an answer appended without a page reload gets the
+            // same paragraph/list layout as one loaded from the database.
+            // Every line is HTML-escaped before any markup is added, so this
+            // stays safe even though the text came from an AI response.
+            function escapeHtml(text) {
+                var div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            function formatInline(line) {
+                return escapeHtml(line).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            }
+
+            function renderFormattedAnswer(container, content) {
+                container.innerHTML = '';
+                var blocks = content.trim().split(/\n\s*\n/);
+
+                blocks.forEach(function (block) {
+                    var lines = block.split('\n').map(function (l) { return l.trim(); }).filter(function (l) { return l.length > 0; });
+                    if (lines.length === 0) {
+                        return;
+                    }
+
+                    var isBulleted = lines.every(function (l) { return l.indexOf('- ') === 0 || l.indexOf('* ') === 0; });
+                    var isNumbered = !isBulleted && lines.every(function (l) { return /^\d+\.\s+/.test(l); });
+
+                    if (isBulleted || isNumbered) {
+                        var list = document.createElement(isBulleted ? 'ul' : 'ol');
+                        list.className = 'mb-2 ps-3';
+                        lines.forEach(function (line) {
+                            var item = document.createElement('li');
+                            item.innerHTML = formatInline(line.replace(/^(?:[-*]|\d+\.)\s+/, ''));
+                            list.appendChild(item);
+                        });
+                        container.appendChild(list);
+                    } else {
+                        var p = document.createElement('p');
+                        p.className = 'mb-2';
+                        p.innerHTML = lines.map(formatInline).join('<br>');
+                        container.appendChild(p);
+                    }
+                });
+            }
+
             function setBubbleContent(bubble, content, source) {
                 bubble.innerHTML = '';
 
                 var text = document.createElement('div');
-                text.textContent = content;
+                renderFormattedAnswer(text, content);
                 bubble.appendChild(text);
 
                 if (source) {
