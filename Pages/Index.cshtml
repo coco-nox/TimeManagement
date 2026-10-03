@@ -36,6 +36,51 @@
         }
     </div>
 
+    <div class="card p-4 mb-3">
+        <div class="d-flex align-items-center justify-content-between mb-1 flex-wrap gap-2">
+            <h2 class="h6 mb-0">This week</h2>
+            <a asp-page="/Calendar/Index" class="small">Open Calendar &rarr;</a>
+        </div>
+        <p class="text-muted small mb-3">What's due this week from your tracked assessments, plus any study sessions the AI has scheduled for today.</p>
+
+        <div class="mini-calendar-grid">
+            @foreach (var day in Model.WeekDays)
+            {
+                <div class="mini-calendar-weekday">@day.Date.ToString("ddd")</div>
+            }
+            @foreach (var day in Model.WeekDays)
+            {
+                <div class="mini-calendar-day @(day.IsToday ? "today" : "") @(day.HasAssessmentDue ? "has-assessment" : "")">@day.Date.Day</div>
+            }
+        </div>
+
+        @if (Model.WeekDays.Any(d => d.HasAssessmentDue))
+        {
+            <div class="small text-muted mt-3"><span class="mini-calendar-legend-dot"></span>Something's due that day</div>
+        }
+
+        <hr class="my-3" />
+
+        <div class="small text-muted text-uppercase fw-semibold mb-2">Today's study sessions</div>
+        @if (!Model.TodaysSessions.Any())
+        {
+            <p class="text-muted small mb-0">Nothing scheduled for today. <a asp-page="/Calendar/Index">Set up your availability</a> and generate a schedule to get study sessions here.</p>
+        }
+        else
+        {
+            <ul class="list-group list-group-flush">
+                @foreach (var session in Model.TodaysSessions)
+                {
+                    <li class="list-group-item px-0 d-flex align-items-center gap-2">
+                        <span style="width: 0.6rem; height: 0.6rem; border-radius: 50%; background-color: @session.ColourHex; flex-shrink: 0;"></span>
+                        <span class="small fw-semibold">@session.ScheduledStart.ToString("h:mm tt")</span>
+                        <span class="small">@session.Title</span>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+
     <h2 class="h6 mb-3">Your courses</h2>
     <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3 mb-3">
         @foreach (var course in Model.Courses)
@@ -79,30 +124,6 @@
                 <div class="fw-semibold">Add a course</div>
             </a>
         </div>
-    </div>
-
-    <div class="card p-4">
-        <div class="d-flex align-items-center justify-content-between mb-1 flex-wrap gap-2">
-            <h2 class="h6 mb-0">This week</h2>
-            <span class="home-mini-label">Coming soon</span>
-        </div>
-        <p class="text-muted small mb-3">Full calendar and scheduling preferences aren't built yet — this previews what's due this week from your tracked assessments.</p>
-
-        <div class="mini-calendar-grid">
-            @foreach (var day in Model.WeekDays)
-            {
-                <div class="mini-calendar-weekday">@day.Date.ToString("ddd")</div>
-            }
-            @foreach (var day in Model.WeekDays)
-            {
-                <div class="mini-calendar-day @(day.IsToday ? "today" : "") @(day.HasAssessmentDue ? "has-assessment" : "")">@day.Date.Day</div>
-            }
-        </div>
-
-        @if (Model.WeekDays.Any(d => d.HasAssessmentDue))
-        {
-            <div class="small text-muted mt-3"><span class="mini-calendar-legend-dot"></span>Something's due that day</div>
-        }
     </div>
 }
 else

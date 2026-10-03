@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TimeManagement")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b8f651626892dd498f2a3d0c74e6f6b47cc7ade4")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+669588956e855061c373767dc8ab3776d71fb30d")]
 [assembly: System.Reflection.AssemblyProductAttribute("TimeManagement")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TimeManagement")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

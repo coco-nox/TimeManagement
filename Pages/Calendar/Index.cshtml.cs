@@ -40,7 +40,7 @@ public class IndexModel(
     public const int GridStartHour = 6;
     public const int GridEndHour = 22;
 
-    public string ActiveTab { get; set; } = "week";
+    public string ActiveTab { get; set; } = "preferences";
 
     public int WeekOffset { get; set; }
 
@@ -77,7 +77,7 @@ public class IndexModel(
 
     public static string CellKey(DateTime date, int hour) => $"{date:yyyy-MM-dd}_{hour}";
 
-    public async Task<IActionResult> OnGetAsync(int weekOffset = 0, string tab = "week")
+    public async Task<IActionResult> OnGetAsync(int weekOffset = 0, string tab = "preferences")
     {
         var user = await _userManager.GetUserAsync(User);
         if (user == null)
@@ -85,7 +85,7 @@ public class IndexModel(
             return NotFound();
         }
 
-        ActiveTab = KnownTabs.Contains(tab) ? tab : "week";
+        ActiveTab = KnownTabs.Contains(tab) ? tab : "preferences";
         WeekOffset = weekOffset;
         WeekStart = GetWeekStart(weekOffset);
 
@@ -109,9 +109,14 @@ public class IndexModel(
     /// already-Available cell replace it - see the AvailabilityBlock lookup
     /// below, which always updates the one existing row for a cell instead
     /// of inserting a second one), "clear" removes whatever row a cell has.
-    /// Cells covered by a fixed CalendarTask are silently skipped even if a
-    /// tampered request includes them - scheduled hours can't be painted
-    /// over here.
+    /// Painting over a cell that currently holds a scheduled CalendarTask
+    /// cancels that task outright (a half-kept study session doesn't mean
+    /// anything) rather than being rejected - the student can then click
+    /// "Generate schedule" to replan the week around whatever they just
+    /// painted. Since a task can span more than one hour, cancelling it also
+    /// reports back every hour it used to occupy, not just the one(s) the
+    /// drag actually touched, so the grid can clear its "scheduled" look
+    /// everywhere that task used to show up.
     /// </summary>
     public async Task<IActionResult> OnPostPaintCellsAsync(
         [FromForm] string weekStart,
@@ -157,11 +162,18 @@ public class IndexModel(
             return BadRequest("No cells supplied.");
         }
 
-        // Loaded once up front (not per cell) so rejecting scheduled cells
-        // below doesn't run a query per cell in the batch.
-        var scheduledCells = await BuildScheduledCellSetAsync(user.Id, weekStartDate, weekEndDate);
+        // Loaded once up front (not per cell): which cell belongs to which
+        // scheduled task (tracked, so a cancelled one can be removed), and
+        // every AvailabilityBlock row already in the week (so a lookup per
+        // cell isn't a query per cell).
+        var scheduledCellTasks = await BuildScheduledCellTaskMapAsync(user.Id, weekStartDate, weekEndDate);
+        var weekBlocksTracked = await _db.AvailabilityBlocks
+            .Where(b => b.UserId == user.Id && b.Date >= weekStartDate && b.Date < weekEndDate)
+            .ToListAsync();
+        var blockByCell = weekBlocksTracked.ToDictionary(b => (b.Date, b.Hour));
 
-        List<object> results = [];
+        var cancelledTasks = new Dictionary<int, CalendarTask>();
+        var resultsByCell = new Dictionary<(DateTime Date, int Hour), object>();
 
         foreach (var cell in cells.DistinctBy(c => (c.Date, c.Hour)))
         {
@@ -170,16 +182,14 @@ public class IndexModel(
                 continue;
             }
             cellDate = cellDate.Date;
+            var cellKey = (cellDate, cell.Hour);
 
-            // Fixed: rescheduling a CalendarTask happens from the
-            // Course/Assessment page, not by painting over it here.
-            if (scheduledCells.Contains((cellDate, cell.Hour)))
+            if (scheduledCellTasks.TryGetValue(cellKey, out var scheduledTask))
             {
-                continue;
+                cancelledTasks[scheduledTask.Id] = scheduledTask;
             }
 
-            var existing = await _db.AvailabilityBlocks
-                .FirstOrDefaultAsync(b => b.UserId == user.Id && b.Date == cellDate && b.Hour == cell.Hour);
+            blockByCell.TryGetValue(cellKey, out var existing);
 
             string resultKind;
             if (outcome == "clear")
@@ -187,6 +197,7 @@ public class IndexModel(
                 if (existing != null)
                 {
                     _db.AvailabilityBlocks.Remove(existing);
+                    blockByCell.Remove(cellKey);
                 }
                 resultKind = "None";
             }
@@ -197,13 +208,15 @@ public class IndexModel(
                 // this same row rather than stacking a second one.
                 if (existing == null)
                 {
-                    _db.AvailabilityBlocks.Add(new AvailabilityBlock
+                    var added = new AvailabilityBlock
                     {
                         UserId = user.Id,
                         Date = cellDate,
                         Hour = cell.Hour,
                         Kind = parsedKind
-                    });
+                    };
+                    _db.AvailabilityBlocks.Add(added);
+                    blockByCell[cellKey] = added;
                 }
                 else
                 {
@@ -212,7 +225,33 @@ public class IndexModel(
                 resultKind = parsedKind.ToString();
             }
 
-            results.Add(new { date = cell.Date, hour = cell.Hour, kind = resultKind });
+            resultsByCell[cellKey] = new { date = cell.Date, hour = cell.Hour, kind = resultKind };
+        }
+
+        // A cancelled task's other hours (it may span more than one) need to
+        // stop looking "scheduled" too, even though the drag might not have
+        // touched them directly - reported with whatever AvailabilityBlock
+        // state (if any) already existed underneath.
+        foreach (var task in cancelledTasks.Values)
+        {
+            _db.CalendarTasks.Remove(task);
+
+            foreach (var hour in OccupiedHours(task))
+            {
+                var cellKey = (task.ScheduledStart.Date, hour);
+                if (resultsByCell.ContainsKey(cellKey))
+                {
+                    continue;
+                }
+
+                var leftoverKind = blockByCell.TryGetValue(cellKey, out var leftoverBlock) ? leftoverBlock.Kind.ToString() : "None";
+                resultsByCell[cellKey] = new
+                {
+                    date = task.ScheduledStart.Date.ToString("yyyy-MM-dd"),
+                    hour,
+                    kind = leftoverKind
+                };
+            }
         }
 
         await _db.SaveChangesAsync();
@@ -225,7 +264,7 @@ public class IndexModel(
 
         return new JsonResult(new
         {
-            results,
+            results = resultsByCell.Values,
             availableHours = weekBlocks.Count(b => b.Kind == AvailabilityKind.Available),
             blockedHours = weekBlocks.Count(b => b.Kind == AvailabilityKind.Blocked)
         });
@@ -350,8 +389,14 @@ public class IndexModel(
     /// Saves the Preferences tab as one plain form post (not fetch, unlike
     /// painting) - sliders and day pills don't need a live in-page update,
     /// so this follows the same POST+redirect pattern as the rest of the app.
+    /// Lands back on the Week tab (not Preferences) for the same week the
+    /// student was looking at, since the natural next step after setting
+    /// which days/hours work is to look at the grid - see
+    /// BlockNonStudyDaysAsync for what's already done for them by the time
+    /// they get there.
     /// </summary>
     public async Task<IActionResult> OnPostSavePreferencesAsync(
+        [FromForm] int weekOffset,
         [FromForm] int totalWeeklyHours,
         [FromForm] List<string>? selectedDays,
         [FromForm] List<int>? courseIds,
@@ -390,13 +435,25 @@ public class IndexModel(
             _db.StudyPreferences.Add(preference);
         }
 
-        preference.TotalWeeklyHours = Math.Clamp(totalWeeklyHours, 0, 168);
-        preference.StudyDays = StudyDayNames.Normalize(selectedDays);
+        var clampedCourseHours = courseHoursPerWeek.ConvertAll(h => Math.Clamp(h, 0, 168));
+        var totalCourseHours = clampedCourseHours.Sum();
+        var requestedTotal = Math.Clamp(totalWeeklyHours, 0, 168);
+
+        // The weekly total is never allowed to end up smaller than what was
+        // actually allocated across courses - rather than silently shrinking
+        // a course's hours (which the student deliberately set), the total
+        // itself is raised to match. The Preferences tab's JS already does
+        // this before submitting, but it's enforced here too so the rule
+        // holds even with JavaScript disabled or a tampered request.
+        preference.TotalWeeklyHours = Math.Max(requestedTotal, totalCourseHours);
+
+        var normalizedDays = StudyDayNames.Normalize(selectedDays);
+        preference.StudyDays = normalizedDays;
 
         for (var i = 0; i < courseIds.Count; i++)
         {
             var courseId = courseIds[i];
-            var hours = Math.Clamp(courseHoursPerWeek[i], 0, 168);
+            var hours = clampedCourseHours[i];
 
             var row = await _db.CourseHoursPreferences
                 .FirstOrDefaultAsync(c => c.UserId == user.Id && c.CourseId == courseId);
@@ -410,10 +467,77 @@ public class IndexModel(
             row.HoursPerWeek = hours;
         }
 
+        // Whatever day isn't selected gets blocked off on the week the
+        // student is about to land on, so they don't have to paint every
+        // non-study day off by hand - see BlockNonStudyDaysAsync. Days that
+        // ARE selected are left exactly as painted; this only ever adds
+        // Blocked cells, never clears anything.
+        var selectedDayList = StudyDayNames.Parse(normalizedDays);
+        await BlockNonStudyDaysAsync(user.Id, GetWeekStart(weekOffset), selectedDayList);
+
         await _db.SaveChangesAsync();
 
-        StatusMessage = "Preferences saved.";
-        return RedirectToPage(new { tab = "preferences" });
+        StatusMessage = preference.TotalWeeklyHours > requestedTotal
+            ? $"Preferences saved. Your weekly total was raised to {preference.TotalWeeklyHours} hours to match what you allocated across courses, and non-study days were blocked off on this week's calendar."
+            : "Preferences saved. Non-study days were blocked off on this week's calendar.";
+        return RedirectToPage(new { weekOffset, tab = "week" });
+    }
+
+    /// <summary>
+    /// Blocks every grid hour on each date in the given week whose day-of-
+    /// week isn't one of the student's selected study days - e.g. unchecking
+    /// "Sat" in Preferences blocks the whole Saturday, so the student
+    /// doesn't have to paint that day off by hand. Overwrites any hour
+    /// already painted Available on a non-study day (the point is that
+    /// whatever isn't a study day becomes unavailable), but never touches a
+    /// day that IS selected - whatever's already painted there survives -
+    /// and skips any cell already covered by a fixed CalendarTask, same as
+    /// the regular paint handler.
+    /// </summary>
+    private async Task BlockNonStudyDaysAsync(string userId, DateTime weekStart, List<string> selectedDays)
+    {
+        var weekEnd = weekStart.AddDays(7);
+        var scheduledCells = await BuildScheduledCellSetAsync(userId, weekStart, weekEnd);
+
+        var existingBlocks = await _db.AvailabilityBlocks
+            .Where(b => b.UserId == userId && b.Date >= weekStart && b.Date < weekEnd)
+            .ToListAsync();
+        var existingByCell = existingBlocks.ToDictionary(b => (b.Date, b.Hour));
+
+        for (var d = 0; d < 7; d++)
+        {
+            var date = weekStart.AddDays(d);
+
+            // weekStart is always a Monday (see GetWeekStart), so index d
+            // lines up directly with StudyDayNames.All's Mon-Sun order.
+            if (selectedDays.Contains(StudyDayNames.All[d]))
+            {
+                continue;
+            }
+
+            for (var hour = GridStartHour; hour <= GridEndHour; hour++)
+            {
+                if (scheduledCells.Contains((date, hour)))
+                {
+                    continue;
+                }
+
+                if (existingByCell.TryGetValue((date, hour), out var existing))
+                {
+                    existing.Kind = AvailabilityKind.Blocked;
+                }
+                else
+                {
+                    _db.AvailabilityBlocks.Add(new AvailabilityBlock
+                    {
+                        UserId = userId,
+                        Date = date,
+                        Hour = hour,
+                        Kind = AvailabilityKind.Blocked
+                    });
+                }
+            }
+        }
     }
 
     private async Task LoadWeekAsync(string userId)
@@ -636,6 +760,29 @@ public class IndexModel(
         }
 
         return cells;
+    }
+
+    /// <summary>Every (date, hour) covered by a fixed CalendarTask in the
+    /// given week, mapped to the owning task itself (tracked by EF, not
+    /// AsNoTracking) - the paint handler's version of
+    /// BuildScheduledCellSetAsync, needed because it has to actually remove
+    /// whichever task a student paints over, not just know the cell is taken.</summary>
+    private async Task<Dictionary<(DateTime Date, int Hour), CalendarTask>> BuildScheduledCellTaskMapAsync(string userId, DateTime weekStart, DateTime weekEnd)
+    {
+        var tasks = await _db.CalendarTasks
+            .Where(t => t.UserId == userId && t.ScheduledStart >= weekStart && t.ScheduledStart < weekEnd)
+            .ToListAsync();
+
+        var map = new Dictionary<(DateTime, int), CalendarTask>();
+        foreach (var task in tasks)
+        {
+            foreach (var hour in OccupiedHours(task))
+            {
+                map[(task.ScheduledStart.Date, hour)] = task;
+            }
+        }
+
+        return map;
     }
 
     /// <summary>The hour-of-day slots a task's PlannedMinutes spans, starting

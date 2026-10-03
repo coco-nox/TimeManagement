@@ -8319,4 +8319,4 @@ C:\Users\cdcha\AppData\Local\Temp\claude\c--Users-cdcha-source-repos-TimeManagem
 C:\Users\cdcha\source\repos\TimeManagement\bin\Debug\net10.0\BouncyCastle.Cryptography.dll
 C:\Users\cdcha\source\repos\TimeManagement\bin\Debug\net10.0\MailKit.dll
 C:\Users\cdcha\source\repos\TimeManagement\bin\Debug\net10.0\MimeKit.dll
-C:\Users\cdcha\source\repos\TimeManagement\obj\Debug\net10.0\compressed\urkklmo451-{0}-6ka1vt6k5p-6ka1vt6k5p.gz
+C:\Users\cdcha\source\repos\TimeManagement\obj\Debug\net10.0\compressed\urkklmo451-{0}-g1kwz731lx-g1kwz731lx.gz

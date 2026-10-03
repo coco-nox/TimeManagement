@@ -85,8 +85,16 @@
                        class="nav-link @(Model.ActiveTab == "upload" ? "active" : "")">Upload</a>
                 </li>
                 <li class="nav-item">
+                    @* Labelled "Manage" (not "Preferences") even though the tab/route value
+                       stays "preferences" internally - the Calendar page has its own,
+                       unrelated "Preferences" tab (study hours/days), and using the same
+                       label for two different things on two different pages was confusing. *@
                     <a asp-page="/Courses/Index" asp-route-courseId="@course.Id" asp-route-tab="preferences"
-                       class="nav-link @(Model.ActiveTab == "preferences" ? "active" : "")">Preferences</a>
+                       class="nav-link @(Model.ActiveTab == "preferences" ? "active" : "")">Manage</a>
+                </li>
+                <li class="nav-item">
+                    <a asp-page="/Courses/Index" asp-route-courseId="@course.Id" asp-route-tab="completed"
+                       class="nav-link @(Model.ActiveTab == "completed" ? "active" : "")">Completed</a>
                 </li>
             </ul>
 
@@ -94,8 +102,8 @@
             {
                 <div class="card">
                     <div class="card-body">
-                        <div class="fw-semibold mb-1">Assessment preferences</div>
-                        <p class="text-muted small">Change an assessment's category, or remove one entirely.</p>
+                        <div class="fw-semibold mb-1">Manage assessments</div>
+                        <p class="text-muted small">Change an assessment's category, set its due date, or remove one entirely.</p>
 
                         @if (!course.Assessments.Any())
                         {
@@ -129,11 +137,131 @@
                                             </form>
                                         </div>
 
-                                        <form method="post" asp-page-handler="DeleteAssessment" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id"
-                                              class="mt-2"
-                                              onsubmit="return confirm('Delete this assessment and all @assessment.Documents.Count document(s) attached to it? This can\'t be undone.');">
-                                            <button type="submit" class="btn btn-outline-danger btn-sm">Delete assessment</button>
-                                        </form>
+                                        <div class="small text-muted mt-1">
+                                            @if (assessment.DueDate.HasValue)
+                                            {
+                                                <span>Due @assessment.DueDate.Value.ToString("d MMM yyyy")</span>
+                                            }
+                                            else if (assessment.Category == AssessmentCategory.Coursework)
+                                            {
+                                                <span>No fixed due date</span>
+                                            }
+                                            else
+                                            {
+                                                <span>No due date detected from the uploaded document</span>
+                                            }
+                                        </div>
+
+                                        <div class="d-flex flex-wrap align-items-start gap-2 mt-2">
+                                            @* Zero-JS disclosure, same pattern as the Dashboard's folder-colour
+                                               picker - no due date editing needed until this is opened. *@
+                                            <details class="due-date-editor">
+                                                <summary class="btn btn-outline-secondary btn-sm">@(assessment.DueDate.HasValue ? "Edit due date" : "Set due date")</summary>
+                                                <form method="post" asp-page-handler="UpdateAssessmentDueDate" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id" class="d-flex align-items-center gap-2 mt-2">
+                                                    <label for="dueDate-@assessment.Id" class="visually-hidden">Due date</label>
+                                                    <input type="date" id="dueDate-@assessment.Id" name="dueDate" class="form-control form-control-sm w-auto" value="@(assessment.DueDate?.ToString("yyyy-MM-dd"))" />
+                                                    <button type="submit" class="btn btn-primary btn-sm">Save date</button>
+                                                </form>
+                                            </details>
+
+                                            <form method="post" asp-page-handler="DeleteAssessment" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id"
+                                                  onsubmit="return confirm('Delete this assessment and all @assessment.Documents.Count document(s) attached to it? This can\'t be undone.');">
+                                                <button type="submit" class="btn btn-outline-danger btn-sm">Delete assessment</button>
+                                            </form>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else if (Model.ActiveTab == "completed")
+            {
+                var completedAssessments = course.Assessments
+                    .Where(a => a.IsCompleted)
+                    .OrderByDescending(a => a.CompletedUtc)
+                    .ToList();
+
+                <div class="card">
+                    @* The same colour strip used for a course's folder card on the
+                       Dashboard - this tab is literally that course's "completed"
+                       folder, so it gets the same visual device. *@
+                    <div class="folder-card-strip" style="--folder-colour: @course.ColourHex"></div>
+                    <div class="card-body">
+                        <div class="fw-semibold mb-1">@course.Title &mdash; Completed</div>
+                        <p class="text-muted small">Assessments you've marked complete, kept out of the way here instead of crowding the Upload tab.</p>
+
+                        @if (!completedAssessments.Any())
+                        {
+                            <p class="text-muted mb-0">Nothing completed yet. Mark an assessment complete from the Upload tab and it'll move here.</p>
+                        }
+                        else
+                        {
+                            <div class="list-group list-group-flush">
+                                @foreach (var assessment in completedAssessments)
+                                {
+                                    <div class="list-group-item px-0 py-3">
+                                        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                                            <div class="fw-semibold">
+                                                @assessment.Title
+                                                <span class="badge text-bg-light text-uppercase ms-1">@assessment.Category</span>
+                                            </div>
+                                            <span class="badge text-bg-success">Completed @assessment.CompletedUtc?.ToString("d MMM yyyy")</span>
+                                        </div>
+
+                                        @{
+                                            var completedTutorTab = assessment.Category switch
+                                            {
+                                                AssessmentCategory.Report => "report",
+                                                AssessmentCategory.Quiz or AssessmentCategory.Test => "quiz",
+                                                _ => "chat"
+                                            };
+                                        }
+                                        <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                                            <form method="post" asp-page-handler="ToggleAssessmentComplete" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id">
+                                                <input type="hidden" name="returnTab" value="completed" />
+                                                <button type="submit" class="btn btn-outline-secondary btn-sm">Mark incomplete</button>
+                                            </form>
+
+                                            <a asp-page="/Tutor/Index" asp-route-courseId="@course.Id" asp-route-tab="@completedTutorTab" asp-route-assessmentId="@assessment.Id"
+                                               class="btn btn-outline-secondary btn-sm">Ask tutor about this</a>
+                                        </div>
+
+                                        <details class="mt-2">
+                                            <summary class="small text-muted" style="cursor: pointer;">Documents (@assessment.Documents.Count)</summary>
+
+                                            @if (assessment.Documents.Any())
+                                            {
+                                                <ul class="list-group list-group-flush mt-2">
+                                                    @foreach (var document in assessment.Documents.OrderByDescending(d => d.UploadedUtc))
+                                                    {
+                                                        <li class="list-group-item px-0">
+                                                            <div class="d-flex justify-content-between align-items-center gap-3">
+                                                                <div>
+                                                                    <div class="small fw-semibold">@document.OriginalFileName</div>
+                                                                    <div class="small text-muted">
+                                                                        Uploaded @document.UploadedUtc.ToString("d MMM yyyy")
+                                                                        @if (string.IsNullOrEmpty(document.ExtractedText))
+                                                                        {
+                                                                            <span>&middot; text not extracted</span>
+                                                                        }
+                                                                    </div>
+                                                                </div>
+                                                                <form method="post" asp-page-handler="DeleteDocument" asp-route-courseId="@course.Id" asp-route-documentId="@document.Id"
+                                                                      onsubmit="return confirm('Delete this document?');">
+                                                                    <button type="submit" class="btn btn-outline-danger btn-sm">Delete</button>
+                                                                </form>
+                                                            </div>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            }
+                                            else
+                                            {
+                                                <div class="mt-2 small text-muted">No documents uploaded for this assessment yet.</div>
+                                            }
+                                        </details>
                                     </div>
                                 }
                             </div>
@@ -180,16 +308,32 @@
                         <div class="fw-semibold">Uploaded documents</div>
                         <p class="text-muted small">
                             Progress here tracks time remaining until the due date — a stand-in until real
-                            checklists (reports) and quiz results (tests) are built.
+                            checklists (reports) and quiz results (tests) are built. Assessments marked
+                            complete move to the Completed tab instead of staying listed here.
                         </p>
-
-                        @if (!course.Assessments.Any())
+                        @if (course.Assessments.Any(a => a.Category != AssessmentCategory.Coursework))
                         {
-                            <p class="text-muted mb-0">No assessments uploaded yet.</p>
+                            <p class="text-muted small">Got due dates set here? <a asp-page="/Calendar/Index">Set up your Calendar</a> to get an AI-generated study schedule built around them.</p>
+                        }
+
+                        @{
+                            var uploadAssessments = course.Assessments.Where(a => !a.IsCompleted).ToList();
+                        }
+
+                        @if (!uploadAssessments.Any())
+                        {
+                            if (course.Assessments.Any())
+                            {
+                                <p class="text-muted mb-0">Everything here has been marked complete - see the Completed tab.</p>
+                            }
+                            else
+                            {
+                                <p class="text-muted mb-0">No assessments uploaded yet.</p>
+                            }
                         }
                         else
                         {
-                            var assessments = course.Assessments
+                            var assessments = uploadAssessments
                                 .OrderBy(a => a.DueDate ?? DateTime.MaxValue)
                                 .ThenBy(a => a.Title)
                                 .ToList();
@@ -198,8 +342,10 @@
                                 @foreach (var assessment in assessments)
                                 {
                                     var progress = Model.GetProgress(assessment);
-                                    var isOverdue = assessment.DueDate.HasValue && assessment.DueDate.Value < DateTime.UtcNow;
-                                    var canToggleComplete = assessment.Category != AssessmentCategory.Coursework && isOverdue;
+                                    // Available any time, not just once overdue - a student who
+                                    // finishes early shouldn't have to wait for the due date to
+                                    // pass before the Dashboard progress bar gives them credit.
+                                    var canToggleComplete = assessment.Category != AssessmentCategory.Coursework;
 
                                     <div class="list-group-item px-0 py-3">
                                         <div class="fw-semibold">
@@ -237,19 +383,30 @@
                                             </div>
                                         }
 
-                                        @if (canToggleComplete)
-                                        {
-                                            <form method="post" asp-page-handler="ToggleAssessmentComplete" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id" class="mt-2">
-                                                @if (assessment.IsCompleted)
-                                                {
-                                                    <button type="submit" class="btn btn-outline-secondary btn-sm">Mark incomplete</button>
-                                                }
-                                                else
-                                                {
-                                                    <button type="submit" class="btn btn-success btn-sm">Mark complete</button>
-                                                }
-                                            </form>
+                                        @{
+                                            // Chat has no assessment-specific view, so Coursework (which only
+                                            // ever uses Chat) just opens the course's chat generally rather than
+                                            // trying to "select" itself on a tab that doesn't take a selection.
+                                            var tutorTab = assessment.Category switch
+                                            {
+                                                AssessmentCategory.Report => "report",
+                                                AssessmentCategory.Quiz or AssessmentCategory.Test => "quiz",
+                                                _ => "chat"
+                                            };
                                         }
+                                        <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                                            @* No IsCompleted branch needed here - uploadAssessments above already
+                                               excludes completed ones, which move to the Completed tab instead. *@
+                                            @if (canToggleComplete)
+                                            {
+                                                <form method="post" asp-page-handler="ToggleAssessmentComplete" asp-route-courseId="@course.Id" asp-route-assessmentId="@assessment.Id">
+                                                    <button type="submit" class="btn btn-success btn-sm">Mark complete</button>
+                                                </form>
+                                            }
+
+                                            <a asp-page="/Tutor/Index" asp-route-courseId="@course.Id" asp-route-tab="@tutorTab" asp-route-assessmentId="@assessment.Id"
+                                               class="btn btn-outline-secondary btn-sm">Ask tutor about this</a>
+                                        </div>
 
                                         <details class="mt-2">
                                             <summary class="small text-muted" style="cursor: pointer;">Documents (@assessment.Documents.Count)</summary>

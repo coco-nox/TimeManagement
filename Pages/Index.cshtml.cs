@@ -31,6 +31,13 @@ public class IndexModel(ApplicationDbContext db, UserManager<ApplicationUser> us
 
     public List<DashboardWeekDay> WeekDays { get; set; } = [];
 
+    /// <summary>Today's AI-scheduled study sessions (from the Calendar page's
+    /// "Generate schedule"), so there's somewhere to see "what am I supposed
+    /// to study today" without having to open Calendar - see Pages/Calendar/Index.cshtml.cs
+    /// OnPostGenerateScheduleAsync, which is what actually creates these
+    /// CalendarTask rows.</summary>
+    public List<DashboardSessionView> TodaysSessions { get; set; } = [];
+
     public async Task OnGetAsync()
     {
         var user = await _userManager.GetUserAsync(User);
@@ -60,6 +67,19 @@ public class IndexModel(ApplicationDbContext db, UserManager<ApplicationUser> us
             : 0;
 
         WeekDays = BuildWeekDays(trackedAssessments);
+
+        var today = DateTime.Today;
+        var tomorrow = today.AddDays(1);
+        var todaysTasks = await _db.CalendarTasks
+            .Include(t => t.Assessment)
+                .ThenInclude(a => a!.Course)
+            .Where(t => t.UserId == user.Id && t.ScheduledStart >= today && t.ScheduledStart < tomorrow)
+            .OrderBy(t => t.ScheduledStart)
+            .ToListAsync();
+
+        TodaysSessions = todaysTasks
+            .Select(t => new DashboardSessionView(t.Title, t.ScheduledStart, t.Assessment?.Course?.ColourHex ?? FolderColours.DefaultHex))
+            .ToList();
     }
 
     /// <summary>
@@ -123,3 +143,7 @@ public class IndexModel(ApplicationDbContext db, UserManager<ApplicationUser> us
 
 /// <summary>One day cell in the Dashboard's "This week" preview.</summary>
 public sealed record DashboardWeekDay(DateTime Date, bool IsToday, bool HasAssessmentDue);
+
+/// <summary>One of today's AI-scheduled study sessions, enough to show on
+/// the Dashboard without loading the full Calendar page.</summary>
+public sealed record DashboardSessionView(string Title, DateTime ScheduledStart, string ColourHex);

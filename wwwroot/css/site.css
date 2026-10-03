@@ -283,6 +283,18 @@ body {
   display: none;
 }
 
+/* The "Set/Edit due date" disclosure on the Course page's Preferences tab -
+   same zero-JS <details>/<summary> approach as the folder-colour picker
+   above, styled as a plain button rather than a swatch. */
+.due-date-editor summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.due-date-editor summary::-webkit-details-marker {
+  display: none;
+}
+
 .folder-colour-dot {
   display: block;
   width: 1.35rem;

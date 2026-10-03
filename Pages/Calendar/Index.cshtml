@@ -11,12 +11,12 @@
 
 <ul class="nav nav-tabs mb-3">
     <li class="nav-item">
-        <a asp-page="/Calendar/Index" asp-route-weekOffset="@Model.WeekOffset" asp-route-tab="week"
-           class="nav-link @(Model.ActiveTab == "week" ? "active" : "")">Week</a>
+        <a asp-page="/Calendar/Index" asp-route-weekOffset="@Model.WeekOffset" asp-route-tab="preferences"
+           class="nav-link @(Model.ActiveTab == "preferences" ? "active" : "")">Preferences</a>
     </li>
     <li class="nav-item">
-        <a asp-page="/Calendar/Index" asp-route-tab="preferences"
-           class="nav-link @(Model.ActiveTab == "preferences" ? "active" : "")">Preferences</a>
+        <a asp-page="/Calendar/Index" asp-route-weekOffset="@Model.WeekOffset" asp-route-tab="week"
+           class="nav-link @(Model.ActiveTab == "week" ? "active" : "")">Week</a>
     </li>
 </ul>
 
@@ -69,8 +69,8 @@
     <div class="calendar-legend">
         <span><span class="legend-swatch available"></span>Available</span>
         <span><span class="legend-swatch blocked"></span>Blocked</span>
-        <span><span class="legend-swatch scheduled"></span>Scheduled (fixed - manage from Course)</span>
-        <span>Click a cell to toggle it, or drag across several - painting the other mode over a cell replaces it.</span>
+        <span><span class="legend-swatch scheduled"></span>Scheduled session</span>
+        <span>Click a cell to toggle it, or drag across several - painting over a scheduled session cancels it, so you can Generate schedule again to replace it.</span>
     </div>
 
     <div class="avail-grid-wrap">
@@ -99,7 +99,7 @@
 
                     if (state == "scheduled")
                     {
-                        <div class="avail-cell scheduled" style="--folder-colour: @cell!.CourseColourHex" data-date="@date.ToString("yyyy-MM-dd")" data-hour="@hour" data-scheduled="true" title="@cell.Title (scheduled - manage from Course)">
+                        <div class="avail-cell scheduled" style="--folder-colour: @cell!.CourseColourHex" data-date="@date.ToString("yyyy-MM-dd")" data-hour="@hour" data-scheduled="true" title="@cell.Title (scheduled - paint over to cancel it)">
                             <span class="scheduled-title">@cell.Title</span>
                         </div>
                     }
@@ -115,11 +115,12 @@
 else
 {
     <div class="calendar-pref-card">
-        <form method="post" asp-page-handler="SavePreferences">
+        <form method="post" asp-page-handler="SavePreferences" id="preferencesForm">
+            <input type="hidden" name="weekOffset" value="@Model.WeekOffset" />
             <div class="mb-4">
                 <label for="totalWeeklyHours" class="form-label fw-semibold">Hours this week</label>
                 <div class="d-flex align-items-center gap-3">
-                    <input type="range" class="form-range" id="totalWeeklyHours" name="totalWeeklyHours" min="0" max="60" value="@Model.TotalWeeklyHours" oninput="document.getElementById('totalWeeklyHoursValue').textContent = this.value">
+                    <input type="range" class="form-range" id="totalWeeklyHours" name="totalWeeklyHours" min="0" max="60" value="@Model.TotalWeeklyHours">
                     <span id="totalWeeklyHoursValue" class="course-hours-value">@Model.TotalWeeklyHours</span>
                 </div>
                 <p class="text-muted small mb-0">How many hours total you want to study this week, across every course.</p>
@@ -137,6 +138,7 @@ else
                         </label>
                     }
                 </div>
+                <p class="text-muted small mb-0 mt-1">Days you don't select are automatically blocked off on the Week calendar when you save - no need to block them by hand.</p>
             </div>
 
             <div class="mb-4">
@@ -154,11 +156,13 @@ else
                                 <span class="course-dot" style="background-color: @ch.ColourHex"></span>
                                 <span class="course-hours-name">@ch.Title</span>
                                 <input type="hidden" name="courseIds" value="@ch.CourseId" />
-                                <input type="range" class="form-range course-hours-slider" name="courseHoursPerWeek" min="0" max="20" value="@ch.HoursPerWeek" oninput="this.closest('.course-hours-row').querySelector('.course-hours-value').textContent = this.value">
+                                <input type="range" class="form-range course-hours-slider" name="courseHoursPerWeek" min="0" max="20" value="@ch.HoursPerWeek">
                                 <span class="course-hours-value">@ch.HoursPerWeek</span>
                             </div>
                         }
                     </div>
+
+                    <div id="hoursExceededWarning" class="alert alert-warning py-2 px-3 mt-3 mb-0 small" hidden></div>
                 }
             </div>
 
@@ -169,6 +173,75 @@ else
 
 @section Scripts {
     <script>
+        // ---- Preferences tab: keep course hours within the weekly total ---------
+        (function () {
+            var form = document.getElementById('preferencesForm');
+            if (!form) {
+                return;
+            }
+
+            var totalInput = document.getElementById('totalWeeklyHours');
+            var totalValueEl = document.getElementById('totalWeeklyHoursValue');
+            var courseSliders = Array.prototype.slice.call(document.querySelectorAll('.course-hours-slider'));
+            var warningEl = document.getElementById('hoursExceededWarning');
+
+            function courseHoursSum() {
+                return courseSliders.reduce(function (sum, slider) {
+                    return sum + (parseInt(slider.value, 10) || 0);
+                }, 0);
+            }
+
+            function hoursLabel(hours) {
+                return hours + ' hour' + (hours === 1 ? '' : 's');
+            }
+
+            function checkHours() {
+                if (!warningEl) {
+                    return;
+                }
+
+                var total = parseInt(totalInput.value, 10) || 0;
+                var sum = courseHoursSum();
+
+                if (sum > total) {
+                    warningEl.hidden = false;
+                    warningEl.textContent = 'Your courses add up to ' + hoursLabel(sum) + ', more than your ' +
+                        hoursLabel(total) + ' weekly total. Saving will raise your weekly total to ' + hoursLabel(sum) + ' to match.';
+                } else {
+                    warningEl.hidden = true;
+                }
+            }
+
+            totalInput.addEventListener('input', function () {
+                totalValueEl.textContent = totalInput.value;
+                checkHours();
+            });
+
+            courseSliders.forEach(function (slider) {
+                slider.addEventListener('input', function () {
+                    slider.closest('.course-hours-row').querySelector('.course-hours-value').textContent = slider.value;
+                    checkHours();
+                });
+            });
+
+            checkHours();
+
+            // The weekly total is never allowed to end up smaller than what was
+            // actually allocated per course - rather than silently shrinking a
+            // course's hours (which the student deliberately set), the total
+            // itself is raised to match on save. The server repeats this same
+            // adjustment (see OnPostSavePreferencesAsync), so it still holds
+            // even with JavaScript disabled.
+            form.addEventListener('submit', function () {
+                var sum = courseHoursSum();
+                var total = parseInt(totalInput.value, 10) || 0;
+                if (sum > total) {
+                    totalInput.value = sum;
+                    totalValueEl.textContent = sum;
+                }
+            });
+        })();
+
         (function () {
             var grid = document.getElementById('availGrid');
             if (!grid) {
@@ -190,8 +263,18 @@ else
                 });
             });
 
+            // Resets a cell to a plain Available/Blocked/empty state before
+            // (re)applying one - including stripping any leftover
+            // "scheduled" look, since painting over a scheduled session
+            // cancels it (see OnPostPaintCellsAsync) and the cell needs to
+            // stop showing that session's title/colour from here on.
             function setCellVisual(cell, kind) {
-                cell.classList.remove('available', 'blocked', 'pending');
+                cell.classList.remove('available', 'blocked', 'pending', 'scheduled');
+                cell.removeAttribute('data-scheduled');
+                cell.removeAttribute('title');
+                cell.style.removeProperty('--folder-colour');
+                cell.innerHTML = '';
+
                 if (kind === 'Available') {
                     cell.classList.add('available');
                     cell.dataset.kind = 'Available';
@@ -207,8 +290,12 @@ else
             var dragOutcome = 'set'; // 'set' paints currentMode, 'clear' erases - decided by the cell the drag started on.
             var touched = new Map(); // "date_hour" -> element
 
+            // Scheduled cells are paintable too - dragging over one cancels
+            // the session it belongs to (the server deletes the CalendarTask
+            // and reports back every hour it used to occupy, not just the
+            // one(s) touched here - see the result handling in savePaint).
             function isPaintable(cell) {
-                return cell && cell.classList.contains('avail-cell') && cell.dataset.scheduled !== 'true';
+                return cell && cell.classList.contains('avail-cell');
             }
 
             function beginDrag(cell) {
@@ -287,7 +374,13 @@ else
                     })
                     .then(function (result) {
                         result.results.forEach(function (r) {
-                            var cell = cellsMap.get(r.date + '_' + r.hour);
+                            // Not every returned cell was necessarily dragged
+                            // over directly - cancelling a multi-hour
+                            // scheduled session reports back every hour it
+                            // used to occupy, so cells outside cellsMap are
+                            // looked up in the grid itself.
+                            var cell = cellsMap.get(r.date + '_' + r.hour) ||
+                                grid.querySelector('.avail-cell[data-date="' + r.date + '"][data-hour="' + r.hour + '"]');
                             if (!cell) {
                                 return;
                             }

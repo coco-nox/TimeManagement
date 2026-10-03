@@ -52,7 +52,7 @@ public class IndexModel(
     [BindProperty]
     public AssessmentCategory? UploadCategory { get; set; }
 
-    private static readonly string[] KnownTabs = ["upload", "preferences"];
+    private static readonly string[] KnownTabs = ["upload", "preferences", "completed"];
 
     public List<Course> Courses { get; set; } = [];
 
@@ -324,15 +324,56 @@ public class IndexModel(
     }
 
     /// <summary>
+    /// Sets (or clears, if the date field was left blank) an assessment's
+    /// due date by hand - the Preferences tab's escape hatch for whenever
+    /// the uploaded document's text didn't contain one the AI could detect
+    /// at upload time (see OnPostUploadAsync's categorisation.DueDate).
+    /// Also lets a wrong AI-detected date be corrected, not just a missing
+    /// one filled in - same single control either way. Manually set here
+    /// counts as "confirmed" exactly like an AI-detected one did.
+    /// </summary>
+    public async Task<IActionResult> OnPostUpdateAssessmentDueDateAsync(int courseId, int assessmentId, DateTime? dueDate)
+    {
+        var course = await LoadOwnedCourseAsync(courseId);
+        if (course == null)
+        {
+            return NotFound();
+        }
+
+        var assessment = course.Assessments.FirstOrDefault(a => a.Id == assessmentId);
+        if (assessment == null)
+        {
+            return NotFound();
+        }
+
+        assessment.DueDate = dueDate;
+        assessment.DueDateConfirmed = dueDate.HasValue;
+        await _db.SaveChangesAsync();
+
+        StatusMessage = dueDate.HasValue
+            ? $"Due date for \"{assessment.Title}\" set to {dueDate.Value:d MMM yyyy}."
+            : $"Due date for \"{assessment.Title}\" was cleared.";
+
+        return RedirectToPage(new { courseId, tab = "preferences" });
+    }
+
+    /// <summary>
     /// Manually flips an assessment's IsCompleted, the only completion path
     /// Quiz/Test assessments have at all (Report gets one automatically from
     /// its checklist - see Pages/Tutor/Index.cshtml.cs OnPostToggleChecklistItemAsync -
-    /// but nothing does the equivalent for the other two categories). Only
-    /// offered once an assessment's due date has passed (see the Upload
-    /// tab), and reversible, the same "manual override, easy to undo" shape
-    /// as the rest of the app rather than a one-way action.
+    /// but nothing does the equivalent for the other two categories). Offered
+    /// any time for a non-Coursework assessment, not just once overdue - a
+    /// student who finishes early shouldn't have to wait for the due date to
+    /// pass before it counts - and reversible, the same "manual override,
+    /// easy to undo" shape as the rest of the app rather than a one-way
+    /// action. Completing an
+    /// assessment moves it off the Upload tab's list and into the Completed
+    /// tab (see the Upload/Completed tabs' own Assessments queries in
+    /// Index.cshtml); returnTab is which of those two this was clicked from,
+    /// so undoing it from the Completed tab lands back there instead of
+    /// bouncing to Upload.
     /// </summary>
-    public async Task<IActionResult> OnPostToggleAssessmentCompleteAsync(int courseId, int assessmentId)
+    public async Task<IActionResult> OnPostToggleAssessmentCompleteAsync(int courseId, int assessmentId, string returnTab = "upload")
     {
         var course = await LoadOwnedCourseAsync(courseId);
         if (course == null)
@@ -354,7 +395,8 @@ public class IndexModel(
             ? $"\"{assessment.Title}\" was marked complete."
             : $"\"{assessment.Title}\" was marked incomplete.";
 
-        return RedirectToPage(new { courseId, tab = "upload" });
+        var landingTab = KnownTabs.Contains(returnTab) ? returnTab : "upload";
+        return RedirectToPage(new { courseId, tab = landingTab });
     }
 
     public async Task<IActionResult> OnPostDeleteDocumentAsync(int courseId, int documentId)
