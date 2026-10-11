@@ -279,11 +279,18 @@ namespace TimeManagement.Data.Migrations
                         .HasMaxLength(300)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Guidance")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsCompleted")
                         .HasColumnType("INTEGER");
 
                     b.Property<Guid>("SessionId")
                         .HasColumnType("TEXT");
+
+                    b.Property<int?>("Source")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -539,6 +546,40 @@ namespace TimeManagement.Data.Migrations
                     b.ToTable("QuizAttempts");
                 });
 
+            modelBuilder.Entity("TimeManagement.Models.ReportOutline", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AssessmentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReportType")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SectionsJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("SessionId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("SuggestedTotalWords")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssessmentId", "SessionId")
+                        .IsUnique();
+
+                    b.ToTable("ReportOutlines");
+                });
+
             modelBuilder.Entity("TimeManagement.Models.StudyPreference", b =>
                 {
                     b.Property<int>("Id")
@@ -761,6 +802,17 @@ namespace TimeManagement.Data.Migrations
                 });
 
             modelBuilder.Entity("TimeManagement.Models.QuizAttempt", b =>
+                {
+                    b.HasOne("TimeManagement.Models.Assessment", "Assessment")
+                        .WithMany()
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Assessment");
+                });
+
+            modelBuilder.Entity("TimeManagement.Models.ReportOutline", b =>
                 {
                     b.HasOne("TimeManagement.Models.Assessment", "Assessment")
                         .WithMany()

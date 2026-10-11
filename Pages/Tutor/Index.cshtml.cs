@@ -70,6 +70,12 @@ public class IndexModel(
 
     public List<AssessmentChecklistItem> ChecklistItems { get; set; } = [];
 
+    /// <summary>The AI-designed outline for the active checklist session;
+    /// null when that session predates outlines or used the default set.</summary>
+    public ReportOutline? ActiveOutline { get; set; }
+
+    public List<ReportOutlineSection> OutlineSections { get; set; } = [];
+
     public List<ArchivedChecklistSessionSummary> ArchivedChecklistSessions { get; set; } = [];
 
     public Guid? ViewingChecklistSessionId { get; set; }
@@ -260,11 +266,58 @@ public class IndexModel(
                 var sourceDocuments = assessment.Documents
                     .Select(d => new TutorSourceDocument(d.OriginalFileName, d.ExtractedText))
                     .ToList();
-                var seeded = await _reportChecklistService.BuildChecklistAsync(assessment.Id, course.Title, assessment.Title, sourceDocuments);
-                _db.AssessmentChecklistItems.AddRange(seeded);
+                var plan = await _reportChecklistService.BuildReportPlanAsync(assessment.Id, course.Title, assessment.Title, sourceDocuments);
+                _db.AssessmentChecklistItems.AddRange(plan.ChecklistItems);
+                if (plan.Outline != null)
+                {
+                    _db.ReportOutlines.Add(plan.Outline);
+                }
                 await _db.SaveChangesAsync();
-                ChecklistItems = seeded;
+                ChecklistItems = plan.ChecklistItems;
             }
+
+            // The outline generated alongside this checklist session, if any.
+            var activeSessionId = ChecklistItems.FirstOrDefault()?.SessionId;
+            if (activeSessionId.HasValue)
+            {
+                ActiveOutline = await _db.ReportOutlines
+                    .FirstOrDefaultAsync(o => o.AssessmentId == assessment.Id && o.SessionId == activeSessionId.Value);
+            }
+
+            // A checklist with no outline - made before outlines existed, or
+            // seeded from the default set because the AI was unavailable at
+            // the time - is upgraded automatically on view rather than asking
+            // the student to click anything: the old session is archived (so
+            // any ticks stay viewable under Archived checklists) and replaced
+            // with a freshly AI-designed one. Only swapped in when the AI
+            // actually returned an outline; if it's still unavailable, the
+            // current checklist stays as is and this is retried next view.
+            // IsCompleted is deliberately left alone, so a manually completed
+            // assessment stays complete.
+            if (ActiveOutline == null && ChecklistItems.Count > 0)
+            {
+                var sourceDocuments = assessment.Documents
+                    .Select(d => new TutorSourceDocument(d.OriginalFileName, d.ExtractedText))
+                    .ToList();
+                var plan = await _reportChecklistService.BuildReportPlanAsync(assessment.Id, course.Title, assessment.Title, sourceDocuments);
+                if (plan.Outline != null)
+                {
+                    var archivedUtc = DateTime.UtcNow;
+                    foreach (var oldItem in ChecklistItems)
+                    {
+                        oldItem.ArchivedUtc = archivedUtc;
+                    }
+
+                    _db.AssessmentChecklistItems.AddRange(plan.ChecklistItems);
+                    _db.ReportOutlines.Add(plan.Outline);
+                    await _db.SaveChangesAsync();
+
+                    ChecklistItems = plan.ChecklistItems;
+                    ActiveOutline = plan.Outline;
+                }
+            }
+
+            OutlineSections = ActiveOutline?.GetSections() ?? [];
         }
 
         return Page();
@@ -526,7 +579,7 @@ public class IndexModel(
 
     /// <summary>
     /// Archives the assessment's current checklist session and immediately
-    /// seeds a fresh default set under a new SessionId - the Report tab's
+    /// seeds a fresh AI-designed checklist and outline under a new SessionId - the Report tab's
     /// equivalent of <see cref="OnPostArchiveConversationAsync"/>. Same
     /// asp-route-* reasoning applies to both courseId and assessmentId here.
     /// </summary>
@@ -554,9 +607,13 @@ public class IndexModel(
         var sourceDocuments = assessment.Documents
             .Select(d => new TutorSourceDocument(d.OriginalFileName, d.ExtractedText))
             .ToList();
-        var freshItems = await _reportChecklistService.BuildChecklistAsync(
+        var plan = await _reportChecklistService.BuildReportPlanAsync(
             assessmentId, assessment.Course!.Title, assessment.Title, sourceDocuments);
-        _db.AssessmentChecklistItems.AddRange(freshItems);
+        _db.AssessmentChecklistItems.AddRange(plan.ChecklistItems);
+        if (plan.Outline != null)
+        {
+            _db.ReportOutlines.Add(plan.Outline);
+        }
 
         // The old session is gone and the new one starts unchecked, so the
         // assessment can't still be marked complete.

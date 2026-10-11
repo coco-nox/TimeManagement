@@ -348,7 +348,13 @@
                         var percent = totalItems > 0 ? completedItems * 100 / totalItems : 0;
 
                         <div class="p-3">
-                            <p class="text-muted small">Built from this assessment's own uploaded brief/rubric where one was found, for @Model.SelectedCourse.Title - falls back to standard report sections otherwise.</p>
+                            <p class="text-muted small">Designed by the AI for this kind of report in @Model.SelectedCourse.Title, then checked against this assessment's uploaded brief so every requirement is covered. <span class="badge rounded-pill text-bg-primary">Brief</span> sections are required by the brief; <span class="badge rounded-pill text-bg-light border">Suggested</span> ones are what a strong report usually includes too.</p>
+                            @if (Model.ActiveOutline == null)
+                            {
+                                <div class="alert alert-light border small">
+                                    The AI couldn't build a tailored outline for this report right now, so standard sections are shown. It'll try again automatically next time you open this report.
+                                </div>
+                            }
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="small text-muted" id="checklistProgressLabel">@completedItems of @totalItems sections complete</span>
                                 @if (Model.SelectedAssessment is { IsCompleted: true })
@@ -363,12 +369,88 @@
                             <ul class="list-group" id="checklistItemList">
                                 @foreach (var item in Model.ChecklistItems)
                                 {
-                                    <li class="list-group-item d-flex align-items-center gap-2">
-                                        <input class="form-check-input checklist-item-checkbox" type="checkbox" data-item-id="@item.Id" id="checklistItem@(item.Id)" @(item.IsCompleted ? "checked" : "") />
-                                        <label class="form-check-label flex-grow-1 @(item.IsCompleted ? "text-decoration-line-through text-muted" : "")" for="checklistItem@(item.Id)">@item.Description</label>
+                                    <li class="list-group-item d-flex align-items-start gap-2">
+                                        <input class="form-check-input checklist-item-checkbox mt-1" type="checkbox" data-item-id="@item.Id" id="checklistItem@(item.Id)" @(item.IsCompleted ? "checked" : "") />
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                                <label class="form-check-label @(item.IsCompleted ? "text-decoration-line-through text-muted" : "")" for="checklistItem@(item.Id)">@item.Description</label>
+                                                @if (item.Source == ReportSectionSource.Brief)
+                                                {
+                                                    <span class="badge rounded-pill text-bg-primary">Brief</span>
+                                                }
+                                                else if (item.Source == ReportSectionSource.Suggested)
+                                                {
+                                                    <span class="badge rounded-pill text-bg-light border">Suggested</span>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrWhiteSpace(item.Guidance))
+                                            {
+                                                <div class="small text-muted mt-1">@item.Guidance</div>
+                                            }
+                                        </div>
                                     </li>
                                 }
                             </ul>
+
+                            @if (Model.ActiveOutline != null && Model.OutlineSections.Any())
+                            {
+                                var outlineWords = Model.ActiveOutline.SuggestedTotalWords;
+                                <details class="mt-4" open>
+                                    <summary class="fw-semibold">Report outline</summary>
+                                    <p class="small text-muted mt-2 mb-3">@(Model.ActiveOutline.ReportType ?? "Suggested structure")@(outlineWords.HasValue ? $" · about {outlineWords.Value:N0} words in total" : "")</p>
+                                    <ol class="ps-3 mb-0">
+                                        @foreach (var outlineSection in Model.OutlineSections)
+                                        {
+                                            <li class="mb-3">
+                                                <div class="d-flex flex-wrap align-items-center gap-2">
+                                                    <span class="fw-semibold">@outlineSection.Title</span>
+                                                    @if (!string.IsNullOrWhiteSpace(outlineSection.Weight))
+                                                    {
+                                                        <span class="badge text-bg-light border">@outlineSection.Weight</span>
+                                                    }
+                                                    @if (outlineSection.WordCount.HasValue)
+                                                    {
+                                                        <span class="small text-muted">~@outlineSection.WordCount.Value.ToString("N0") words</span>
+                                                    }
+                                                    @if (outlineSection.Source == ReportSectionSource.Brief)
+                                                    {
+                                                        <span class="badge rounded-pill text-bg-primary">Brief</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="badge rounded-pill text-bg-light border">Suggested</span>
+                                                    }
+                                                </div>
+                                                @if (!string.IsNullOrWhiteSpace(outlineSection.Guidance))
+                                                {
+                                                    <div class="small mt-1">@outlineSection.Guidance</div>
+                                                }
+                                                @if (outlineSection.Subsections.Any())
+                                                {
+                                                    <ul class="small mt-1 mb-1">
+                                                        @foreach (var subsection in outlineSection.Subsections)
+                                                        {
+                                                            <li>@subsection</li>
+                                                        }
+                                                    </ul>
+                                                }
+                                                @if (outlineSection.BriefRequirements.Any())
+                                                {
+                                                    <div class="small text-muted mt-1">
+                                                        Covers from the brief:
+                                                        <ul class="mb-0">
+                                                            @foreach (var requirement in outlineSection.BriefRequirements)
+                                                            {
+                                                                <li>@requirement</li>
+                                                            }
+                                                        </ul>
+                                                    </div>
+                                                }
+                                            </li>
+                                        }
+                                    </ol>
+                                </details>
+                            }
                         </div>
                     }
                 </div>

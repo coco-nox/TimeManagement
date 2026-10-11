@@ -1,5 +1,15 @@
 namespace TimeManagement.Models;
 
+/// <summary>Where a generated checklist item / outline section came from:
+/// something the assignment brief explicitly asks for, or a section the AI
+/// added from its own knowledge of how this kind of report is normally
+/// written.</summary>
+public enum ReportSectionSource
+{
+    Brief,
+    Suggested
+}
+
 /// <summary>
 /// One section of a Report-category assessment's completion checklist.
 /// Normally generated from the assessment's own uploaded rubric/brief and
@@ -19,6 +29,15 @@ public class AssessmentChecklistItem
     public Assessment? Assessment { get; set; }
 
     public string Description { get; set; } = string.Empty;
+
+    /// <summary>One or two sentences on what this section should actually
+    /// contain. Null for the fixed default set and for checklists generated
+    /// before guidance existed.</summary>
+    public string? Guidance { get; set; }
+
+    /// <summary>Whether the brief requires this section or the AI suggested
+    /// it. Null when unknown (default set, or generated before this existed).</summary>
+    public ReportSectionSource? Source { get; set; }
 
     public bool IsCompleted { get; set; }
 

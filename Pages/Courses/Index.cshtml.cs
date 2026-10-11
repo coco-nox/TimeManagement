@@ -247,19 +247,22 @@ public class IndexModel(
         _db.Assessments.Add(assessment);
         await _db.SaveChangesAsync();
 
-        // Report assessments get a checklist as soon as they exist, so
-        // there's something to show the first time a student opens the
-        // Report tab for it - tailored to this document's own rubric/brief
-        // where the AI can read one, falling back to standard sections
-        // otherwise (see ReportChecklistGenerationService).
+        // Report assessments get a checklist and outline as soon as they
+        // exist, so there's something to show the first time a student opens
+        // the Report tab for it - designed by the AI and checked against this
+        // document's own rubric/brief (see ReportChecklistGenerationService).
         if (assessment.Category == AssessmentCategory.Report)
         {
-            var checklistItems = await _reportChecklistService.BuildChecklistAsync(
+            var plan = await _reportChecklistService.BuildReportPlanAsync(
                 assessment.Id,
                 course.Title,
                 assessment.Title,
                 [new TutorSourceDocument(UploadedFile.FileName, extractedText)]);
-            _db.AssessmentChecklistItems.AddRange(checklistItems);
+            _db.AssessmentChecklistItems.AddRange(plan.ChecklistItems);
+            if (plan.Outline != null)
+            {
+                _db.ReportOutlines.Add(plan.Outline);
+            }
             await _db.SaveChangesAsync();
         }
 

@@ -21,6 +21,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<AssessmentChecklistItem> AssessmentChecklistItems => Set<AssessmentChecklistItem>();
 
+    public DbSet<ReportOutline> ReportOutlines => Set<ReportOutline>();
+
     public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
 
     public DbSet<CalendarTask> CalendarTasks => Set<CalendarTask>();
@@ -106,6 +108,7 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         builder.Entity<AssessmentChecklistItem>(item =>
         {
             item.Property(i => i.Description).HasMaxLength(300).IsRequired();
+            item.Property(i => i.Guidance).HasMaxLength(500);
             item.HasIndex(i => i.AssessmentId);
             // Speeds up "find this assessment's active (unarchived) session".
             item.HasIndex(i => new { i.AssessmentId, i.ArchivedUtc });
@@ -113,6 +116,19 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
             item.HasOne(i => i.Assessment)
                 .WithMany()
                 .HasForeignKey(i => i.AssessmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // One outline per checklist session (same SessionId); deleted with
+        // its assessment, same as the checklist items themselves.
+        builder.Entity<ReportOutline>(outline =>
+        {
+            outline.Property(o => o.ReportType).HasMaxLength(200);
+            outline.HasIndex(o => new { o.AssessmentId, o.SessionId }).IsUnique();
+
+            outline.HasOne(o => o.Assessment)
+                .WithMany()
+                .HasForeignKey(o => o.AssessmentId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

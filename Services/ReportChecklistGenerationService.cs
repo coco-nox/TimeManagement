@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -9,22 +10,28 @@ using TimeManagement.Models;
 namespace TimeManagement.Services;
 
 /// <summary>
-/// Builds a Report assessment's completion checklist from the actual
-/// rubric or requirements in its own uploaded document(s), read alongside
-/// which course the assessment belongs to - instead of the fixed, generic
-/// section list every Report used to get regardless of what the assignment
-/// brief actually asked for. Reuses the same AI provider config as the
-/// other AI features (same appsettings.json "Gemini" section, same HTTP
-/// endpoint) rather than a separate integration.
+/// Designs a Report assessment's structure - the checklist the student
+/// ticks off and the fuller outline (headings, sub-headings, word counts)
+/// shown above it - in ONE AI call, so the two always agree. The AI works
+/// like an experienced tutor would: it designs the report from its own
+/// knowledge of how this kind of report is normally written for this
+/// subject, then uses the assessment's uploaded brief/rubric as the
+/// reference that every graded requirement must be covered by some section.
+/// It is not limited to what the brief spells out - sections the brief
+/// doesn't mention but a strong report would include are added and marked
+/// as Suggested rather than Brief. With no readable document it still
+/// designs a report from the course and assessment title alone. Reuses the
+/// same AI provider config as the other AI features (same appsettings.json
+/// "Gemini" section, same HTTP endpoint) rather than a separate integration.
 ///
 /// Always returns a usable checklist, never an error the caller has to
-/// handle: with no AI configured, no readable documents, or a request that
-/// fails outright, <see cref="BuildChecklistAsync"/> falls back to
-/// <see cref="AssessmentChecklistItem.DefaultDescriptions"/> instead of
-/// leaving the assessment with nothing. That matters because this runs as
-/// a side effect of uploading a document or archiving a checklist, not as
-/// its own user-facing action with a retry button - it should never be the
-/// reason one of those actions fails.
+/// handle: with no AI configured or a request that fails outright,
+/// <see cref="BuildReportPlanAsync"/> falls back to
+/// <see cref="AssessmentChecklistItem.DefaultDescriptions"/> (with no
+/// outline) instead of leaving the assessment with nothing. That matters
+/// because this runs as a side effect of uploading a document or archiving a
+/// checklist, not as its own user-facing action with a retry button - it
+/// should never be the reason one of those actions fails.
 /// </summary>
 public sealed partial class ReportChecklistGenerationService(
     HttpClient httpClient,
@@ -39,42 +46,85 @@ public sealed partial class ReportChecklistGenerationService(
     private const int TotalContextCharBudget = 12_000;
     private const int PerDocumentCharBudget = 4_000;
 
-    private const int MaxItems = 8;
-    private const int MaxItemLength = 300;
+    private const int MaxSections = 10;
+    private const int MaxListEntries = 6;
+    private const int MaxDescriptionLength = 300;
+    private const int MaxGuidanceLength = 500;
+    private const int MaxShortTextLength = 150;
 
     [GeneratedRegex("^```(json|JSON)?\\s*|\\s*```$", RegexOptions.Singleline)]
     private static partial Regex JsonFenceRemover();
 
     /// <summary>
     /// Main entry point, called wherever a Report assessment needs a fresh
-    /// checklist session (first upload, recategorised-to-Report fallback,
-    /// or archiving into a new session). Returns items with one shared new
-    /// SessionId, ready to add to the database.
+    /// checklist session (first upload, first view of an empty checklist, or
+    /// archiving into a new session). Returns checklist items sharing one new
+    /// SessionId plus the matching outline (null on the default fallback),
+    /// ready to add to the database.
     /// </summary>
-    public async Task<List<AssessmentChecklistItem>> BuildChecklistAsync(
+    public async Task<ReportPlan> BuildReportPlanAsync(
         int assessmentId,
         string courseTitle,
         string assessmentTitle,
         IReadOnlyList<TutorSourceDocument> documents,
         CancellationToken cancellationToken = default)
     {
-        var sections = await GenerateSectionsAsync(courseTitle, assessmentTitle, documents, cancellationToken);
-        IReadOnlyList<string> descriptions = sections.Count > 0 ? sections : AssessmentChecklistItem.DefaultDescriptions;
-
         var sessionId = Guid.NewGuid();
-        return [.. descriptions.Select(description => new AssessmentChecklistItem
+        var design = await GenerateDesignAsync(courseTitle, assessmentTitle, documents, cancellationToken);
+
+        if (design == null || design.Sections.Count == 0)
+        {
+            return new ReportPlan(
+                [.. AssessmentChecklistItem.DefaultDescriptions.Select(description => new AssessmentChecklistItem
+                {
+                    AssessmentId = assessmentId,
+                    Description = description,
+                    IsCompleted = false,
+                    SessionId = sessionId
+                })],
+                null);
+        }
+
+        var items = design.Sections.Select(section => new AssessmentChecklistItem
         {
             AssessmentId = assessmentId,
-            Description = description,
+            Description = BuildDescription(section),
+            Guidance = section.Guidance,
+            Source = section.Source,
             IsCompleted = false,
             SessionId = sessionId
-        })];
+        }).ToList();
+
+        var outline = new ReportOutline
+        {
+            AssessmentId = assessmentId,
+            SessionId = sessionId,
+            ReportType = design.ReportType,
+            SuggestedTotalWords = design.SuggestedTotalWords,
+            CreatedUtc = DateTime.UtcNow
+        };
+        outline.SetSections(design.Sections);
+
+        return new ReportPlan(items, outline);
     }
 
-    /// <summary>Returns an empty list on anything short of a clean, parsed
-    /// answer - BuildChecklistAsync treats that as "fall back to defaults"
-    /// rather than needing a separate success/failure signal.</summary>
-    private async Task<List<string>> GenerateSectionsAsync(
+    // "Requirements analysis" + "15%" -> "Requirements analysis (15%)",
+    // unless the AI already put the weight in the title itself.
+    private static string BuildDescription(ReportOutlineSection section)
+    {
+        var description = section.Title;
+        if (!string.IsNullOrWhiteSpace(section.Weight) && !description.Contains(section.Weight, StringComparison.OrdinalIgnoreCase))
+        {
+            description = $"{description} ({section.Weight})";
+        }
+
+        return Truncate(description, MaxDescriptionLength);
+    }
+
+    /// <summary>Returns null on anything short of a clean, parsed answer -
+    /// BuildReportPlanAsync treats that as "fall back to defaults" rather
+    /// than needing a separate success/failure signal.</summary>
+    private async Task<ReportDesign?> GenerateDesignAsync(
         string courseTitle,
         string assessmentTitle,
         IReadOnlyList<TutorSourceDocument> documents,
@@ -82,16 +132,14 @@ public sealed partial class ReportChecklistGenerationService(
     {
         if (string.IsNullOrWhiteSpace(_options.ApiKey))
         {
-            return [];
+            return null;
         }
 
+        // No readable document is no longer a reason to skip the AI: it can
+        // still design a sensible report from the course and assessment
+        // title, it just has nothing to cross-check against.
         var usableDocuments = documents.Where(d => !string.IsNullOrWhiteSpace(d.ExtractedText)).ToList();
-        if (usableDocuments.Count == 0)
-        {
-            return [];
-        }
-
-        var context = BuildContext(usableDocuments);
+        var context = usableDocuments.Count > 0 ? BuildContext(usableDocuments) : string.Empty;
         var prompt = BuildPrompt(courseTitle, assessmentTitle, context);
 
         var payload = new
@@ -102,20 +150,39 @@ public sealed partial class ReportChecklistGenerationService(
                 {
                     new
                     {
-                        text = "You are helping a student track their progress on a Report-category assessment. " +
-                               "Read the supplied assignment brief/rubric excerpts for their course and produce a " +
-                               "checklist of the concrete sections or deliverables they actually need to complete, " +
-                               "in the order they'd naturally work through them. Each item must be one short line " +
-                               "(under 20 words) that names the section AND the specific requirement or grading " +
-                               "criterion the brief gives for it - never a bare generic label like \"Introduction\" " +
-                               "on its own when the brief says more than that. If the brief states a grading weight " +
-                               "or mark allocation for a section, include it in parentheses, e.g. \"Testing: include " +
-                               "unit tests and a documented test plan (20%)\". Produce between 4 and 8 items that " +
-                               "together cover the whole assessment - don't pad with items the brief doesn't call " +
-                               "for, and don't leave out a graded component the brief clearly requires. If the " +
-                               "excerpts don't actually contain a rubric or clear structure, fall back to sensible " +
-                               "standard report sections for the subject instead of inventing specifics that aren't " +
-                               "there. Return only valid JSON: an array of strings, one per checklist item, nothing else."
+                        text = "You are an experienced university tutor helping a student plan a Report-category " +
+                               "assessment. Design the structure of the report they should write, in two steps. " +
+                               "STEP 1 - use your own expertise: work out what kind of report this is for this " +
+                               "subject (e.g. technical project report, lab report, business case, literature " +
+                               "review, reflective report) and design the structure a strong, high-scoring report " +
+                               "of that kind normally has - sections in the order they'd appear, sensible " +
+                               "sub-headings, and what each part should contain. You are not limited to what the " +
+                               "brief spells out. Briefs usually leave the standard parts of a report implicit - " +
+                               "things like an executive summary or abstract, a conclusion, references, or an " +
+                               "appendix (e.g. code listings, raw data) - so explicitly consider those for this " +
+                               "report type and add the ones that would genuinely strengthen it (typically one to " +
+                               "three), unless the brief says to follow a fixed template or forbids extra sections. " +
+                               "STEP 2 - use the assignment brief/rubric excerpts " +
+                               "(when supplied) as the reference: check every graded component, required section, " +
+                               "deliverable, word limit and mark weighting in the brief, and make sure each one is " +
+                               "covered by a section - adjust, rename or add sections until nothing the brief " +
+                               "requires is missing, and use the brief's own section names where it gives them. " +
+                               "Mark a section \"brief\" if the brief requires it, or \"suggested\" if you added it " +
+                               "from your own expertise. Never claim the brief says something it doesn't: " +
+                               "\"briefRequirements\" may only list requirements actually found in the excerpts " +
+                               "(short paraphrases), and must be empty for a suggested section or when no excerpts " +
+                               "were supplied. If the brief gives a word limit, use it for suggestedTotalWords and " +
+                               "split it across sections; otherwise estimate a typical length for this kind of " +
+                               "report. Produce between 4 and " + MaxSections + " top-level sections, each with up " +
+                               "to " + MaxListEntries + " sub-headings. \"guidance\" is one or two plain sentences " +
+                               "(under 50 words) on what to actually write in that section, specific to this " +
+                               "assessment rather than generic advice. Return only valid JSON, an object with keys: " +
+                               "\"reportType\" (string), \"suggestedTotalWords\" (integer or null), and " +
+                               "\"sections\" (array of objects with keys \"title\" (string, short), \"weight\" " +
+                               "(string like \"20%\" or \"15 marks\" when the brief gives one, else null), " +
+                               "\"wordCount\" (integer or null), \"source\" (\"brief\" or \"suggested\"), " +
+                               "\"guidance\" (string), \"subsections\" (array of strings), and " +
+                               "\"briefRequirements\" (array of strings))."
                     }
                 }
             },
@@ -123,7 +190,7 @@ public sealed partial class ReportChecklistGenerationService(
             {
                 new { role = "user", parts = new[] { new { text = prompt } } }
             },
-            generationConfig = new { temperature = 0.2 }
+            generationConfig = new { temperature = 0.3, responseMimeType = "application/json" }
         };
 
         _httpClient.DefaultRequestHeaders.Remove("x-goog-api-key");
@@ -133,14 +200,26 @@ public sealed partial class ReportChecklistGenerationService(
 
         try
         {
-            using var response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
+            var response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
+
+            // Gemini answers 503 ("overloaded") often enough to matter, and
+            // there's no retry button here - one short retry before giving
+            // up and falling back to the default checklist.
+            if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
+            {
+                response.Dispose();
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
+            }
+
+            using var _ = response;
             if (!response.IsSuccessStatusCode)
             {
                 var failureBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogWarning(
-                    "Report checklist generation request to Gemini failed with HTTP {StatusCode}. Response body: {Body}",
+                    "Report plan generation request to Gemini failed with HTTP {StatusCode}. Response body: {Body}",
                     (int)response.StatusCode, failureBody);
-                return [];
+                return null;
             }
 
             var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
@@ -158,15 +237,15 @@ public sealed partial class ReportChecklistGenerationService(
                 }
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or KeyNotFoundException or InvalidOperationException)
         {
             // Swallowed deliberately - see the class summary: this always
             // degrades to the default checklist rather than failing the
             // upload/archive action it's running inside of.
-            _logger.LogWarning(ex, "Report checklist generation failed; falling back to the default checklist.");
+            _logger.LogWarning(ex, "Report plan generation failed; falling back to the default checklist.");
         }
 
-        return [];
+        return null;
     }
 
     // Same excerpt-concatenation approach as TutorChatService.BuildContext.
@@ -200,10 +279,18 @@ public sealed partial class ReportChecklistGenerationService(
 
     private static string BuildPrompt(string courseTitle, string assessmentTitle, string context)
     {
+        if (string.IsNullOrEmpty(context))
+        {
+            return $"Course: {courseTitle}\nAssessment: {assessmentTitle}\n\n" +
+                   "No assignment brief with readable text has been uploaded - design the report from your own " +
+                   "expertise for this course and assessment, mark every section \"suggested\", and leave every " +
+                   "briefRequirements list empty.";
+        }
+
         return $"Course: {courseTitle}\nAssessment: {assessmentTitle}\n\nAssignment brief / document excerpts:\n\n{context}";
     }
 
-    private static List<string> ParseResponse(string aiResponse)
+    private static ReportDesign? ParseResponse(string aiResponse)
     {
         var text = aiResponse.Trim();
         if (text.StartsWith("```", StringComparison.Ordinal))
@@ -215,43 +302,114 @@ public sealed partial class ReportChecklistGenerationService(
         {
             using var json = JsonDocument.Parse(text);
             var root = json.RootElement;
-            if (root.ValueKind != JsonValueKind.Array)
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("sections", out var sectionsEl) ||
+                sectionsEl.ValueKind != JsonValueKind.Array)
             {
-                return [];
+                return null;
             }
 
-            var items = new List<string>();
-            foreach (var element in root.EnumerateArray())
+            var sections = new List<ReportOutlineSection>();
+            foreach (var element in sectionsEl.EnumerateArray())
             {
-                if (element.ValueKind != JsonValueKind.String)
+                if (element.ValueKind != JsonValueKind.Object)
                 {
                     continue;
                 }
 
-                var value = element.GetString();
-                if (string.IsNullOrWhiteSpace(value))
+                var title = ReadString(element, "title", MaxShortTextLength);
+                if (title == null)
                 {
                     continue;
                 }
 
-                value = value.Trim();
-                if (value.Length > MaxItemLength)
-                {
-                    value = value[..MaxItemLength];
-                }
+                var source = string.Equals(ReadString(element, "source", 20), "brief", StringComparison.OrdinalIgnoreCase)
+                    ? ReportSectionSource.Brief
+                    : ReportSectionSource.Suggested;
 
-                items.Add(value);
-                if (items.Count >= MaxItems)
+                sections.Add(new ReportOutlineSection(
+                    title,
+                    ReadString(element, "weight", 30),
+                    ReadPositiveInt(element, "wordCount"),
+                    source,
+                    ReadString(element, "guidance", MaxGuidanceLength),
+                    ReadStringList(element, "subsections", MaxShortTextLength),
+                    // A suggested section can't cite the brief, whatever the AI sent.
+                    source == ReportSectionSource.Brief ? ReadStringList(element, "briefRequirements", MaxDescriptionLength) : []));
+
+                if (sections.Count >= MaxSections)
                 {
                     break;
                 }
             }
 
-            return items;
+            return new ReportDesign(
+                ReadString(root, "reportType", 200),
+                ReadPositiveInt(root, "suggestedTotalWords"),
+                sections);
         }
         catch (JsonException)
         {
-            return [];
+            return null;
         }
     }
+
+    private static string? ReadString(JsonElement element, string property, int maxLength)
+    {
+        if (!element.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var text = value.GetString()?.Trim();
+        return string.IsNullOrEmpty(text) ? null : Truncate(text, maxLength);
+    }
+
+    // Tolerates "1500" as well as 1500 - the AI isn't always strict about
+    // number vs string.
+    private static int? ReadPositiveInt(JsonElement element, string property)
+    {
+        if (!element.TryGetProperty(property, out var value))
+        {
+            return null;
+        }
+
+        int number;
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out number) && number > 0)
+        {
+            return number;
+        }
+
+        if (value.ValueKind == JsonValueKind.String && int.TryParse(value.GetString(), out number) && number > 0)
+        {
+            return number;
+        }
+
+        return null;
+    }
+
+    private static List<string> ReadStringList(JsonElement element, string property, int maxLength)
+    {
+        if (!element.TryGetProperty(property, out var value) || value.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return [.. value.EnumerateArray()
+            .Where(e => e.ValueKind == JsonValueKind.String)
+            .Select(e => e.GetString()?.Trim())
+            .Where(s => !string.IsNullOrEmpty(s))
+            .Select(s => Truncate(s!, maxLength))
+            .Take(MaxListEntries)];
+    }
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length > maxLength ? text[..maxLength] : text;
+
+    private sealed record ReportDesign(string? ReportType, int? SuggestedTotalWords, List<ReportOutlineSection> Sections);
 }
+
+/// <summary>A new checklist session for a Report assessment plus its
+/// matching outline. Outline is null when the default checklist was used
+/// (no AI configured, or the request failed).</summary>
+public sealed record ReportPlan(List<AssessmentChecklistItem> ChecklistItems, ReportOutline? Outline);
