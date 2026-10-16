@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "o+lxqiCqRIM=",
+  "dgSpecHash": "NE+AGOYyIao=",
   "success": true,
-  "projectFilePath": "C:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
+  "projectFilePath": "c:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\cdcha\\.nuget\\packages\\anglesharp\\1.7.2\\anglesharp.1.7.2.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\anglesharp.css\\1.0.2\\anglesharp.css.1.0.2.nupkg.sha512",
@@ -17,11 +17,15 @@
     "C:\\Users\\cdcha\\.nuget\\packages\\itext7\\9.7.0\\itext7.9.7.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\mailkit\\4.17.0\\mailkit.4.17.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.aspnetcore.identity.entityframeworkcore\\10.0.13\\microsoft.aspnetcore.identity.entityframeworkcore.10.0.13.nupkg.sha512",
+    "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.aspnetcore.mvc.razor.extensions\\6.0.0\\microsoft.aspnetcore.mvc.razor.extensions.6.0.0.nupkg.sha512",
+    "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.aspnetcore.mvc.razor.runtimecompilation\\10.0.13\\microsoft.aspnetcore.mvc.razor.runtimecompilation.10.0.13.nupkg.sha512",
+    "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.aspnetcore.razor.language\\6.0.0\\microsoft.aspnetcore.razor.language.6.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.build.framework\\18.0.2\\microsoft.build.framework.18.0.2.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.codeanalysis.analyzers\\3.11.0\\microsoft.codeanalysis.analyzers.3.11.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.codeanalysis.common\\5.0.0\\microsoft.codeanalysis.common.5.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.codeanalysis.csharp\\5.0.0\\microsoft.codeanalysis.csharp.5.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.codeanalysis.csharp.workspaces\\5.0.0\\microsoft.codeanalysis.csharp.workspaces.5.0.0.nupkg.sha512",
+    "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.codeanalysis.razor\\6.0.0\\microsoft.codeanalysis.razor.6.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.codeanalysis.workspaces.common\\5.0.0\\microsoft.codeanalysis.workspaces.common.5.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.codeanalysis.workspaces.msbuild\\5.0.0\\microsoft.codeanalysis.workspaces.msbuild.5.0.0.nupkg.sha512",
     "C:\\Users\\cdcha\\.nuget\\packages\\microsoft.data.sqlite.core\\10.0.13\\microsoft.data.sqlite.core.10.0.13.nupkg.sha512",
@@ -57,9 +61,9 @@
       "code": "NU1902",
       "level": "Warning",
       "message": "Package 'System.Security.Cryptography.Pkcs' 10.0.0 has a known moderate severity vulnerability, https://github.com/advisories/GHSA-2fmv-rv2c-59x7",
-      "projectPath": "C:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
+      "projectPath": "c:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
       "warningLevel": 1,
-      "filePath": "C:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
+      "filePath": "c:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
       "libraryId": "System.Security.Cryptography.Pkcs",
       "targetGraphs": [
         "net10.0"
@@ -69,9 +73,9 @@
       "code": "NU1903",
       "level": "Warning",
       "message": "Package 'System.Security.Cryptography.Pkcs' 10.0.0 has a known high severity vulnerability, https://github.com/advisories/GHSA-846f-f764-76mx",
-      "projectPath": "C:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
+      "projectPath": "c:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
       "warningLevel": 1,
-      "filePath": "C:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
+      "filePath": "c:\\Users\\cdcha\\source\\repos\\TimeManagement\\TimeManagement.csproj",
       "libraryId": "System.Security.Cryptography.Pkcs",
       "targetGraphs": [
         "net10.0"
