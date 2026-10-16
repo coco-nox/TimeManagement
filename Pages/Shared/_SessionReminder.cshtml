@@ -1,0 +1,9 @@
+@* The study-session reminder card, shown on every signed-in page (see
+   _Layout). Empty until wwwroot/js/session-reminder.js finds a session due a
+   reminder via the Reminders page's Upcoming handler. *@
+<div id="sessionReminder" class="session-reminder" role="region" aria-label="Session reminder" aria-live="polite" hidden
+     data-upcoming-url="@Url.Page("/Reminders/Index", "Upcoming")"
+     data-post-url="@Url.Page("/Reminders/Index")"
+     data-analytics-url="@Url.Page("/Analytics/Index")"></div>
+<form id="sessionReminderAntiForgery" style="display:none;">@Html.AntiForgeryToken()</form>
+<script src="~/js/session-reminder.js" asp-append-version="true"></script>

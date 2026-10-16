@@ -1,8 +1,6 @@
 using System.Globalization;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Options;
 using TimeManagement.Models;
 
 namespace TimeManagement.Services;
@@ -13,10 +11,9 @@ namespace TimeManagement.Services;
 /// stores that suggestion on the created assessment and leaves the due date
 /// unconfirmed unless the text explicitly contains one and it was accepted.
 /// </summary>
-public sealed partial class DocumentCategorizationService(HttpClient httpClient, IOptions<DocumentCategorizationOptions> options)
+public sealed partial class DocumentCategorizationService(AiClient aiClient)
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly DocumentCategorizationOptions _options = options.Value;
+    private readonly AiClient _aiClient = aiClient;
 
     [GeneratedRegex("^```(json|JSON)?\\s*|\\s*```$", RegexOptions.Singleline)]
     private static partial Regex JsonFenceRemover();
@@ -68,7 +65,7 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
         // No API key configured - same fallback, but text was available so
         // the keyword pass (and the due-date regex below) had something
         // real to work with.
-        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+        if (!_aiClient.IsConfigured)
         {
             return new AssessmentCategorizationResult(
                 Category: keywordCategory ?? AssessmentCategory.Coursework,
@@ -79,31 +76,35 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
                     : "No AI key configured or no text available for analysis.");
         }
 
-        // Build and send the Gemini request: a short system instruction plus
-        // the document text, asking for category + due date as JSON.
-        var prompt = BuildPrompt(normalizedText);
-        var payload = new
+        // A short system instruction plus the document text, asking for
+        // category + due date as JSON.
+        var request = new AiRequest(
+            SystemInstruction: "Return only valid JSON with keys category and dueDate. category must be one of Coursework, Quiz, Report, Test. dueDate must be null if no due date is mentioned, otherwise ISO date string YYYY-MM-DD.",
+            Prompt: BuildPrompt(normalizedText),
+            Temperature: 0.1,
+            JsonOutput: true);
+
+        var result = await _aiClient.AskAsync(AiTask.DocumentCategorization, request, ParseResponse, cancellationToken);
+        if (result.Value is { } parsed)
         {
-            systemInstruction = new
+            // The AI missed a due date the regex pass found in the
+            // text (a common gap - see BuildPrompt's 5,000-character
+            // cap, or the AI simply not recognising the wording used).
+            // Trust the regex hit rather than leaving it blank.
+            if (parsed.DueDate == null && regexDueDate != null)
             {
-                parts = new[]
+                return parsed with
                 {
-                    new { text = "Return only valid JSON with keys category and dueDate. category must be one of Coursework, Quiz, Report, Test. dueDate must be null if no due date is mentioned, otherwise ISO date string YYYY-MM-DD." }
-                }
-            },
-            contents = new[]
-            {
-                new { role = "user", parts = new[] { new { text = prompt } } }
-            },
-            generationConfig = new { temperature = 0.1 }
-        };
+                    DueDate = regexDueDate,
+                    WasDetected = true,
+                    Reason = parsed.Reason + " A due date was found by pattern matching instead."
+                };
+            }
 
-        _httpClient.DefaultRequestHeaders.Remove("x-goog-api-key");
-        _httpClient.DefaultRequestHeaders.Add("x-goog-api-key", _options.ApiKey);
+            return parsed;
+        }
 
-        var requestUri = $"{_options.Endpoint}/{_options.Model}:generateContent";
-        using var response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        if (result.Failure != AiFailure.InvalidResponse)
         {
             return new AssessmentCategorizationResult(
                 Category: keywordCategory ?? AssessmentCategory.Coursework,
@@ -111,43 +112,9 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
                 WasDetected: keywordCategory != null || regexDueDate != null,
                 Reason: keywordCategory != null
                     ? "AI categorization failed; used keyword fallback classification."
-                    : $"AI categorization failed with HTTP {(int)response.StatusCode}.");
-        }
-
-        // Pull the model's reply text out of Gemini's response shape
-        // (candidates[0].content.parts[0].text) and try to parse it as the
-        // { category, dueDate } JSON we asked for.
-        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        var json = JsonDocument.Parse(responseJson);
-        var content = json.RootElement;
-
-        if (content.TryGetProperty("candidates", out var candidates) && candidates.ValueKind == JsonValueKind.Array && candidates.GetArrayLength() > 0)
-        {
-            var parts = candidates[0].GetProperty("content").GetProperty("parts");
-            var assistantText = parts.GetArrayLength() > 0 ? parts[0].GetProperty("text").GetString() : null;
-
-            if (!string.IsNullOrWhiteSpace(assistantText))
-            {
-                var parsed = ParseResponse(assistantText);
-                if (parsed != null)
-                {
-                    // The AI missed a due date the regex pass found in the
-                    // text (a common gap - see BuildPrompt's 5,000-character
-                    // cap, or the AI simply not recognising the wording used).
-                    // Trust the regex hit rather than leaving it blank.
-                    if (parsed.DueDate == null && regexDueDate != null)
-                    {
-                        return parsed with
-                        {
-                            DueDate = regexDueDate,
-                            WasDetected = true,
-                            Reason = parsed.Reason + " A due date was found by pattern matching instead."
-                        };
-                    }
-
-                    return parsed;
-                }
-            }
+                    : result.StatusCode is int statusCode
+                        ? $"AI categorization failed with HTTP {statusCode}."
+                        : "AI categorization failed.");
         }
 
         return new AssessmentCategorizationResult(
@@ -242,7 +209,7 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
         return false;
     }
 
-    // The user-turn text sent to Gemini: instructions plus up to the first
+    // The user-turn text sent to the AI: instructions plus up to the first
     // 5,000 characters of the document (long enough for context, short
     // enough to keep the request cheap and fast).
     private static string BuildPrompt(string extractedText)
@@ -305,17 +272,6 @@ public sealed partial class DocumentCategorizationService(HttpClient httpClient,
             return null;
         }
     }
-}
-
-public sealed class DocumentCategorizationOptions
-{
-    public string ApiKey { get; set; } = string.Empty;
-
-    /// <summary>Base URL for the Gemini generateContent API, without the trailing
-    /// "/{model}:generateContent" - each request appends that using <see cref="Model"/>.</summary>
-    public string Endpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
-
-    public string Model { get; set; } = "gemini-3.6-flash";
 }
 
 public sealed record AssessmentCategorizationResult(

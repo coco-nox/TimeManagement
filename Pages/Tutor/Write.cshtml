@@ -1,0 +1,356 @@
+@page
+@using TimeManagement.Models
+@model TimeManagement.Pages.Tutor.WriteModel
+@{
+    ViewData["Title"] = Model.Document != null ? Model.Document.Title + " - Write" : "Write";
+    var doc = Model.Document;
+}
+
+<partial name="_TutorTabs" model='new TimeManagement.Pages.Tutor.TutorTabsView("write", Model.SelectedCourse?.Id)' />
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success py-2">@Model.StatusMessage</div>
+}
+
+<form id="writeAntiForgery" style="display:none;">@Html.AntiForgeryToken()</form>
+
+<div class="row g-3">
+    <div class="col-lg-3">
+        <div class="small text-muted text-uppercase fw-semibold mb-2">Your courses</div>
+        @if (!Model.Courses.Any())
+        {
+            <p class="text-muted small">You don't have any courses yet. <a asp-page="/Courses/Index">Add one</a> first.</p>
+        }
+        else
+        {
+            <div class="list-group mb-3">
+                @foreach (var course in Model.Courses)
+                {
+                    <a asp-page="/Tutor/Write" asp-route-courseId="@course.Id"
+                       class="list-group-item list-group-item-action @(Model.SelectedCourse?.Id == course.Id ? "active" : "")">@course.Title</a>
+                }
+            </div>
+        }
+
+        @if (Model.SelectedCourse != null)
+        {
+            <div class="small text-muted text-uppercase fw-semibold mb-2">Papers in @Model.SelectedCourse.Title</div>
+            @if (!Model.Documents.Any())
+            {
+                <p class="text-muted small">Nothing written yet.</p>
+            }
+            <div class="d-flex flex-column gap-2 mb-3">
+                @foreach (var paper in Model.Documents)
+                {
+                    <a asp-page="/Tutor/Write" asp-route-documentId="@paper.Id" class="write-paper-link @(doc?.Id == paper.Id ? "active" : "")">
+                        <span class="fw-semibold d-block">@paper.Title</span>
+                        <span class="small text-muted">@(paper.Assessment != null ? $"{paper.Assessment.Category} · " : "")@paper.WordCount words · @paper.UpdatedUtc.ToLocalTime().ToString("d MMM, h:mm tt")</span>
+                    </a>
+                }
+            </div>
+
+            <details class="write-new" @(Model.Documents.Any() ? "" : "open")>
+                <summary class="btn btn-outline-secondary w-100">+ New paper</summary>
+                <form method="post" asp-page-handler="Create" class="mt-2 d-flex flex-column gap-2">
+                    <input type="hidden" name="courseId" value="@Model.SelectedCourse.Id" />
+                    <label class="small fw-semibold mb-0" for="newTitle">Title</label>
+                    <input class="form-control" id="newTitle" name="title" maxlength="200" placeholder="e.g. Lab report draft" />
+                    <label class="small fw-semibold mb-0" for="newFor">What's it for?</label>
+                    <select class="form-select" id="newFor" name="assessmentId">
+                        <option value="">Just notes (no assessment)</option>
+                        @foreach (var assessment in Model.Assessments)
+                        {
+                            <option value="@assessment.Id">@assessment.Title (@assessment.Category)</option>
+                        }
+                    </select>
+                    <div class="form-text">A paper for a Report starts with that report's outline headings.</div>
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </form>
+            </details>
+            <p class="small text-muted mt-3 mb-0">Papers are saved here with the course, next to its uploaded files.</p>
+        }
+    </div>
+
+    @if (doc == null)
+    {
+        <div class="col-lg-9">
+            @if (Model.SelectedCourse == null)
+            {
+                <p class="text-muted">Choose a course to see its papers or start writing.</p>
+            }
+            else
+            {
+                <div class="card p-4">
+                    <h2 class="h5">Write your papers in FlightPath</h2>
+                    <p class="text-muted mb-0">Open a paper from the list, or start a new one. Everything saves as you type, and you can download it as a Word document or PDF whenever you need to hand it in.</p>
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="col-lg-6">
+            <div class="write-editor-card">
+                <div class="write-title-row">
+                    <label for="docTitle" class="visually-hidden">Title</label>
+                    <input id="docTitle" class="write-title-input" value="@doc.Title" maxlength="200" />
+                    <span id="saveStatus" class="write-save-status" aria-live="polite">Saved</span>
+                </div>
+                <div id="writeToolbar">
+                    <span class="ql-formats">
+                        <select class="ql-header" aria-label="Text style">
+                            <option value="1">Heading 1</option>
+                            <option value="2">Heading 2</option>
+                            <option value="3">Heading 3</option>
+                            <option selected="selected">Normal text</option>
+                        </select>
+                    </span>
+                    <span class="ql-formats">
+                        <button type="button" class="ql-bold" aria-label="Bold"></button>
+                        <button type="button" class="ql-italic" aria-label="Italic"></button>
+                        <button type="button" class="ql-underline" aria-label="Underline"></button>
+                    </span>
+                    <span class="ql-formats">
+                        <button type="button" class="ql-list" value="bullet" aria-label="Bulleted list"></button>
+                        <button type="button" class="ql-list" value="ordered" aria-label="Numbered list"></button>
+                        <button type="button" class="ql-blockquote" aria-label="Quote"></button>
+                    </span>
+                    <span class="ql-formats">
+                        <button type="button" class="ql-link" aria-label="Link"></button>
+                        <button type="button" id="insertTable" class="write-table-btn" aria-label="Insert table" title="Insert table">
+                            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line><line x1="10" y1="4" x2="10" y2="20"></line></svg>
+                        </button>
+                        <button type="button" class="ql-clean" aria-label="Clear formatting"></button>
+                    </span>
+                </div>
+                <div class="write-desk">
+                    <div class="write-paper">
+                        <div id="editor"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3">
+            <div class="card p-3 mb-3">
+                <div class="d-flex justify-content-between align-items-baseline">
+                    <span class="small text-muted text-uppercase fw-semibold">Word count</span>
+                    <span class="fs-5 fw-bold" style="color: var(--accent);"><span id="wordCount">@doc.WordCount</span>@if (Model.SuggestedTotalWords is int target)
+                    {
+                        <span class="fs-6 fw-normal text-muted"> / @target.ToString("N0")</span>
+                    }</span>
+                </div>
+                @if (Model.SuggestedTotalWords is int totalTarget && totalTarget > 0)
+                {
+                    <div class="progress mt-2" style="height: 0.5rem;">
+                        <div id="wordProgress" class="progress-bar" data-target="@totalTarget" style="width: @(Math.Min(100, doc.WordCount * 100 / totalTarget))%; background-color: var(--accent);"></div>
+                    </div>
+                }
+            </div>
+
+            @if (Model.OutlineSections.Any() || Model.ChecklistItems.Any())
+            {
+                <div class="card p-3 mb-3">
+                    <div class="small text-muted text-uppercase fw-semibold mb-2">Outline &amp; checklist</div>
+                    <div class="d-flex flex-column gap-2" id="outlinePanel">
+                        @for (var i = 0; i < Model.ChecklistItems.Count; i++)
+                        {
+                            var item = Model.ChecklistItems[i];
+                            var outlineSection = i < Model.OutlineSections.Count ? Model.OutlineSections[i] : null;
+                            <div class="d-flex gap-2 align-items-start">
+                                <input class="form-check-input mt-1 write-checklist" type="checkbox" id="check@(item.Id)" data-item-id="@item.Id" @(item.IsCompleted ? "checked" : "") />
+                                <label class="flex-grow-1" for="check@(item.Id)">
+                                    <span class="d-block fw-semibold small">@item.Description</span>
+                                    @if (outlineSection != null)
+                                    {
+                                        <span class="d-block small text-muted write-section-count" data-section-title="@outlineSection.Title" data-target="@outlineSection.WordCount">
+                                            <span class="count">0</span>@(outlineSection.WordCount is int sectionTarget ? $" / {sectionTarget} words" : " words")
+                                        </span>
+                                    }
+                                </label>
+                            </div>
+                        }
+                    </div>
+                    <div class="small text-muted border-top pt-2 mt-2">Same checklist as the <a asp-page="/Tutor/Index" asp-route-courseId="@doc.CourseId" asp-route-tab="report" asp-route-assessmentId="@doc.AssessmentId">Report tab</a>.</div>
+                </div>
+            }
+
+            <div class="card p-3 mb-3">
+                <div class="small text-muted text-uppercase fw-semibold mb-2">Download</div>
+                <div class="d-flex flex-column gap-2">
+                    <a class="btn btn-outline-secondary" asp-page="/Tutor/Write" asp-page-handler="Docx" asp-route-documentId="@doc.Id">Word document (.docx)</a>
+                    <a class="btn btn-outline-secondary" asp-page="/Tutor/Print" asp-route-documentId="@doc.Id" target="_blank" rel="noopener">Print / Save as PDF</a>
+                </div>
+            </div>
+
+            <form method="post" asp-page-handler="Delete" onsubmit="return confirm('Delete this paper? This can\'t be undone.');">
+                <input type="hidden" name="documentId" value="@doc.Id" />
+                <button type="submit" class="btn btn-link text-danger p-0">Delete paper</button>
+            </form>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    @if (doc != null)
+    {
+        <link rel="stylesheet" href="~/lib/quill/quill.snow.css" />
+        <script src="~/lib/quill/quill.js"></script>
+        <script id="docContent" type="application/json">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(doc.ContentHtml))</script>
+        <script>
+            // The Write tab's editor: Quill with a document-style toolbar,
+            // autosaving ~1.5 s after the last change (and when the tab is
+            // hidden). The server sanitises every save, so what's stored is
+            // only document formatting.
+            (function () {
+                var saveUrl = '@Url.Page("/Tutor/Write", "Save")';
+                var toggleUrl = '@Url.Page("/Tutor/Index", "ToggleChecklistItem")';
+                var documentId = @doc.Id;
+                var token = document.querySelector('#writeAntiForgery input[name="__RequestVerificationToken"]').value;
+                var status = document.getElementById('saveStatus');
+                var titleInput = document.getElementById('docTitle');
+
+                var quill = new Quill('#editor', {
+                    theme: 'snow',
+                    modules: { toolbar: '#writeToolbar', table: true },
+                    placeholder: 'Start writing…'
+                });
+                quill.setContents(quill.clipboard.convert({ html: JSON.parse(document.getElementById('docContent').textContent) }), 'silent');
+
+                document.getElementById('insertTable').addEventListener('click', function () {
+                    quill.getModule('table').insertTable(3, 3);
+                });
+
+                // ---- word counts ---------------------------------------
+                var wordPattern = /[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu;
+                function countWords(text) {
+                    var matches = (text || '').match(wordPattern);
+                    return matches ? matches.length : 0;
+                }
+
+                var sectionCounters = Array.prototype.slice.call(document.querySelectorAll('.write-section-count'));
+                function normalise(text) { return (text || '').trim().toLowerCase(); }
+
+                function updateCounts() {
+                    var total = countWords(quill.getText());
+                    document.getElementById('wordCount').textContent = total;
+                    var progress = document.getElementById('wordProgress');
+                    if (progress) {
+                        progress.style.width = Math.min(100, Math.round(total * 100 / Number(progress.dataset.target))) + '%';
+                    }
+
+                    if (sectionCounters.length === 0) {
+                        return;
+                    }
+                    // Words under each heading, until the next heading.
+                    var counts = {};
+                    var current = null;
+                    Array.prototype.forEach.call(quill.root.children, function (node) {
+                        if (/^H[12]$/.test(node.tagName)) {
+                            current = normalise(node.textContent);
+                            counts[current] = counts[current] || 0;
+                        } else if (current !== null) {
+                            counts[current] += countWords(node.textContent);
+                        }
+                    });
+                    sectionCounters.forEach(function (counter) {
+                        var title = normalise(counter.dataset.sectionTitle);
+                        var key = Object.keys(counts).filter(function (k) { return k === title || k.indexOf(title) === 0 || title.indexOf(k) === 0; })[0];
+                        counter.querySelector('.count').textContent = key ? counts[key] : 0;
+                    });
+                }
+
+                // ---- autosave --------------------------------------------
+                var timer = null;
+                var dirty = false;
+                var saving = false;
+
+                function setStatus(text) { status.textContent = text; }
+
+                function currentHtml() {
+                    // getSemanticHTML gives clean lists/tables; it also turns
+                    // every space into &nbsp;, which is undone here.
+                    return quill.getSemanticHTML().replace(/&nbsp;/g, ' ');
+                }
+
+                function save(keepalive) {
+                    if (!dirty || saving) {
+                        return;
+                    }
+                    saving = true;
+                    dirty = false;
+                    setStatus('Saving…');
+                    var body = new FormData();
+                    body.append('documentId', documentId);
+                    body.append('title', titleInput.value);
+                    body.append('html', currentHtml());
+                    body.append('__RequestVerificationToken', token);
+                    fetch(saveUrl, { method: 'POST', body: body, keepalive: !!keepalive })
+                        .then(function (response) { return response.json(); })
+                        .then(function (result) {
+                            saving = false;
+                            if (result.ok) {
+                                setStatus('Saved just now');
+                            } else {
+                                dirty = true;
+                                setStatus(result.error || 'Couldn\'t save - will retry');
+                            }
+                        })
+                        .catch(function () {
+                            saving = false;
+                            dirty = true;
+                            setStatus('Couldn\'t save - will retry');
+                            schedule();
+                        });
+                }
+
+                function schedule() {
+                    clearTimeout(timer);
+                    timer = setTimeout(function () { save(false); }, 1500);
+                }
+
+                function changed() {
+                    dirty = true;
+                    setStatus('Editing…');
+                    updateCounts();
+                    schedule();
+                }
+
+                quill.on('text-change', function (delta, old, source) {
+                    if (source === 'user') {
+                        changed();
+                    }
+                });
+                titleInput.addEventListener('input', changed);
+                document.addEventListener('visibilitychange', function () {
+                    if (document.visibilityState === 'hidden') {
+                        save(true);
+                    }
+                });
+                window.addEventListener('beforeunload', function (event) {
+                    if (dirty || saving) {
+                        save(true);
+                        event.preventDefault();
+                    }
+                });
+
+                // ---- checklist (same items as the Report tab) -------------
+                document.querySelectorAll('.write-checklist').forEach(function (box) {
+                    box.addEventListener('change', function () {
+                        var body = new FormData();
+                        body.append('itemId', box.dataset.itemId);
+                        body.append('__RequestVerificationToken', token);
+                        fetch(toggleUrl, { method: 'POST', body: body })
+                            .then(function (response) { return response.json(); })
+                            .then(function (result) { box.checked = result.isCompleted; })
+                            .catch(function () { box.checked = !box.checked; });
+                    });
+                });
+
+                updateCounts();
+                quill.focus();
+            })();
+        </script>
+    }
+}

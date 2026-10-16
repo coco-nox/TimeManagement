@@ -1,0 +1,108 @@
+@page
+@model TimeManagement.Pages.Tutor.StudyGuideModel
+@{
+    ViewData["Title"] = "Study guide";
+}
+
+<partial name="_TutorTabs" model='new TimeManagement.Pages.Tutor.TutorTabsView("studyguide", Model.SelectedCourse?.Id)' />
+
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="alert alert-danger py-2">@Model.ErrorMessage</div>
+}
+
+<div class="row g-3">
+    <div class="col-lg-3">
+        <div class="small text-muted text-uppercase fw-semibold mb-2">Your courses</div>
+        @if (!Model.Courses.Any())
+        {
+            <p class="text-muted small">You don't have any courses yet. <a asp-page="/Courses/Index">Add one</a> first.</p>
+        }
+        <div class="list-group">
+            @foreach (var course in Model.Courses)
+            {
+                <a asp-page="/Tutor/StudyGuide" asp-route-courseId="@course.Id"
+                   class="list-group-item list-group-item-action @(Model.SelectedCourse?.Id == course.Id ? "active" : "")">@course.Title</a>
+            }
+        </div>
+    </div>
+
+    <div class="col-lg-9">
+        @if (Model.SelectedCourse == null)
+        {
+            <p class="text-muted">Choose a course to make a study guide for one of its tests or quizzes.</p>
+        }
+        else if (!Model.Assessments.Any())
+        {
+            <div class="card p-4">
+                <h2 class="h5">No tests or quizzes in @Model.SelectedCourse.Title</h2>
+                <p class="text-muted mb-0">Study guides are for Test and Quiz assessments. Upload one on the <a asp-page="/Courses/Index" asp-route-courseId="@Model.SelectedCourse.Id">Course page</a> (or move an assessment to Test/Quiz in its Preferences tab).</p>
+            </div>
+        }
+        else
+        {
+            var selected = Model.SelectedAssessment!;
+            <div class="card p-3 mb-3">
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                    <form method="get" class="d-flex align-items-center gap-2 flex-wrap m-0">
+                        <input type="hidden" name="courseId" value="@Model.SelectedCourse.Id" />
+                        <label for="guideFor" class="small text-muted text-uppercase fw-semibold mb-0">Study guide for</label>
+                        <select id="guideFor" name="assessmentId" class="form-select w-auto" onchange="this.form.submit()">
+                            @foreach (var assessment in Model.Assessments)
+                            {
+                                <option value="@assessment.Id" selected="@(assessment.Id == selected.Id)">@assessment.Title · @assessment.Category@(assessment.DueDate is DateTime due ? $" · due {due:ddd d MMM}" : "")@(assessment.IsCompleted ? " (done)" : "")</option>
+                            }
+                        </select>
+                        <noscript><button type="submit" class="btn btn-outline-secondary btn-sm">Show</button></noscript>
+                    </form>
+                    @if (Model.Guide != null)
+                    {
+                        <span class="small text-muted">Made @Model.Guide.GeneratedUtc.ToLocalTime().ToString("d MMM, h:mm tt")</span>
+                    }
+                    <span class="flex-grow-1"></span>
+                    <form method="post" asp-page-handler="Generate" class="m-0 study-guide-generate">
+                        <input type="hidden" name="assessmentId" value="@selected.Id" />
+                        <button type="submit" class="btn @(Model.Guide == null ? "btn-primary" : "btn-outline-secondary")">@(Model.Guide == null ? "Create study guide" : "Regenerate")</button>
+                    </form>
+                    @if (Model.Guide != null)
+                    {
+                        <a class="btn btn-outline-secondary" asp-page="/Tutor/StudyGuide" asp-page-handler="Docx" asp-route-guideId="@Model.Guide.Id">Download Word (.docx)</a>
+                        <a class="btn btn-primary" asp-page="/Tutor/Print" asp-route-guideId="@Model.Guide.Id" target="_blank" rel="noopener">Print / Save as PDF</a>
+                    }
+                </div>
+            </div>
+
+            @if (Model.GuideHtml == null)
+            {
+                <div class="card p-4">
+                    <h2 class="h5">Make a study guide for @selected.Title</h2>
+                    <p class="text-muted mb-0">The AI reads this test's files and the course's notes, then writes a guide to revise from: key concepts, definitions, a summary of each topic, and practice questions with the answers at the back. It takes about half a minute.</p>
+                </div>
+            }
+            else
+            {
+                <div class="write-desk rounded">
+                    <article class="write-paper study-guide-paper">
+                        <div class="small text-muted text-uppercase fw-semibold" style="letter-spacing: 0.08em;">@Model.SelectedCourse.Title · Study guide</div>
+                        <h2 class="study-guide-title">@selected.Title</h2>
+                        <p class="text-muted">@(selected.DueDate is DateTime dueDate ? $"{dueDate:dddd d MMMM} · " : "")built from: @Model.Guide!.SourceNames</p>
+                        @Html.Raw(Model.GuideHtml)
+                    </article>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        // Writing a guide takes a while - say so, and stop double-submits.
+        document.querySelectorAll('.study-guide-generate').forEach(function (form) {
+            form.addEventListener('submit', function () {
+                var button = form.querySelector('button');
+                button.disabled = true;
+                button.textContent = 'Writing your study guide…';
+            });
+        });
+    </script>
+}

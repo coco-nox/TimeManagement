@@ -15,7 +15,7 @@ namespace TimeManagement.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
@@ -171,6 +171,9 @@ namespace TimeManagement.Data.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("EmailRemindersEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -199,7 +202,27 @@ namespace TimeManagement.Data.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("INTEGER");
 
+                    b.Property<int>("ReminderLeadMinutes")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SecurityStamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("TelegramChatId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TelegramLinkCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("TelegramLinkCodeExpiresUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("TelegramRemindersEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TelegramUsername")
+                        .HasMaxLength(64)
                         .HasColumnType("TEXT");
 
                     b.Property<bool>("TwoFactorEnabled")
@@ -217,6 +240,10 @@ namespace TimeManagement.Data.Migrations
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
+
+                    b.HasIndex("TelegramChatId");
+
+                    b.HasIndex("TelegramLinkCode");
 
                     b.ToTable("AspNetUsers", (string)null);
                 });
@@ -343,11 +370,27 @@ namespace TimeManagement.Data.Migrations
                     b.Property<bool>("IsCompleted")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsMissed")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("MissedReason")
+                        .HasMaxLength(300)
                         .HasColumnType("TEXT");
 
                     b.Property<int>("PlannedMinutes")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ReminderDismissedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ReminderEmailSentUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ReminderTelegramMessageId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ReminderTelegramSentUtc")
+                        .HasColumnType("TEXT");
 
                     b.Property<DateTime>("ScheduledStart")
                         .HasColumnType("TEXT");
@@ -364,6 +407,8 @@ namespace TimeManagement.Data.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AssessmentId");
+
+                    b.HasIndex("ScheduledStart");
 
                     b.HasIndex("UserId");
 
@@ -580,6 +625,86 @@ namespace TimeManagement.Data.Migrations
                     b.ToTable("ReportOutlines");
                 });
 
+            modelBuilder.Entity("TimeManagement.Models.StudyDocument", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("AssessmentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentHtml")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CourseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("WordCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssessmentId");
+
+                    b.HasIndex("CourseId");
+
+                    b.HasIndex("UserId", "CourseId");
+
+                    b.ToTable("StudyDocuments");
+                });
+
+            modelBuilder.Entity("TimeManagement.Models.StudyGuide", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("AssessmentId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("GeneratedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceNames")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AssessmentId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("StudyGuides");
+                });
+
             modelBuilder.Entity("TimeManagement.Models.StudyPreference", b =>
                 {
                     b.Property<int>("Id")
@@ -606,19 +731,119 @@ namespace TimeManagement.Data.Migrations
                     b.ToTable("StudyPreferences");
                 });
 
+            modelBuilder.Entity("TimeManagement.Models.StudySession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ActiveSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("CalendarTaskId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("CheckShownUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ChecklistTicked")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("CourseId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EndedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("InactiveSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsOnBreak")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsSaved")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastHeartbeatUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("OfflineGraceUntilUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("OfflineSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PendingIdleSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("PlannedMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("QuizAnswered")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("QuizCorrect")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("StartedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TutorQuestions")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("WordsWritten")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalendarTaskId");
+
+                    b.HasIndex("CourseId");
+
+                    b.HasIndex("UserId", "EndedUtc");
+
+                    b.HasIndex("UserId", "StartedUtc");
+
+                    b.ToTable("StudySessions");
+                });
+
             modelBuilder.Entity("TimeManagement.Models.WeeklyCheckIn", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ComparedToLastWeek")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("");
+
                     b.Property<string>("Feedback")
+                        .HasMaxLength(1000)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Mood")
                         .IsRequired()
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
+
+                    b.Property<string>("Preparedness")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(50)
+                        .HasColumnType("TEXT")
+                        .HasDefaultValue("");
 
                     b.Property<string>("ScheduleFit")
                         .IsRequired()
@@ -636,7 +861,43 @@ namespace TimeManagement.Data.Migrations
 
                     b.HasIndex("UserId");
 
+                    b.HasIndex("UserId", "WeekEnding")
+                        .IsUnique();
+
                     b.ToTable("WeeklyCheckIns");
+                });
+
+            modelBuilder.Entity("TimeManagement.Models.WeeklySummary", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("GeneratedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InputHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("WeekStart")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "WeekStart")
+                        .IsUnique();
+
+                    b.ToTable("WeeklySummaries");
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -823,6 +1084,51 @@ namespace TimeManagement.Data.Migrations
                     b.Navigation("Assessment");
                 });
 
+            modelBuilder.Entity("TimeManagement.Models.StudyDocument", b =>
+                {
+                    b.HasOne("TimeManagement.Models.Assessment", "Assessment")
+                        .WithMany()
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("TimeManagement.Models.Course", "Course")
+                        .WithMany()
+                        .HasForeignKey("CourseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TimeManagement.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Assessment");
+
+                    b.Navigation("Course");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TimeManagement.Models.StudyGuide", b =>
+                {
+                    b.HasOne("TimeManagement.Models.Assessment", "Assessment")
+                        .WithMany()
+                        .HasForeignKey("AssessmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TimeManagement.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Assessment");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TimeManagement.Models.StudyPreference", b =>
                 {
                     b.HasOne("TimeManagement.Models.ApplicationUser", "User")
@@ -834,7 +1140,43 @@ namespace TimeManagement.Data.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("TimeManagement.Models.StudySession", b =>
+                {
+                    b.HasOne("TimeManagement.Models.CalendarTask", "CalendarTask")
+                        .WithMany()
+                        .HasForeignKey("CalendarTaskId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("TimeManagement.Models.Course", "Course")
+                        .WithMany()
+                        .HasForeignKey("CourseId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("TimeManagement.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CalendarTask");
+
+                    b.Navigation("Course");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("TimeManagement.Models.WeeklyCheckIn", b =>
+                {
+                    b.HasOne("TimeManagement.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("TimeManagement.Models.WeeklySummary", b =>
                 {
                     b.HasOne("TimeManagement.Models.ApplicationUser", "User")
                         .WithMany()

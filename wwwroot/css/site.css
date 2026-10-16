@@ -946,3 +946,574 @@ body {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- Analytics ("Your week in review") ----------
+   Built from the palette variables (palettes.css) rather than fixed
+   colours, so the banner and bar chart follow whichever of the 7
+   palettes the student picked. */
+
+.analytics-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.analytics-week-label {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+}
+
+.analytics-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.4rem;
+  margin-bottom: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--banner-colour);
+  background-color: color-mix(in srgb, var(--banner-colour) 14%, var(--surface));
+  --banner-colour: var(--accent);
+}
+
+.analytics-banner.down {
+  --banner-colour: var(--secondary);
+}
+
+.analytics-banner.same {
+  --banner-colour: var(--border);
+}
+
+.analytics-banner-icon {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-text);
+  background-color: var(--banner-colour);
+}
+
+.analytics-banner.same .analytics-banner-icon {
+  color: var(--text);
+}
+
+.analytics-banner-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.analytics-banner-detail {
+  color: var(--text-muted);
+}
+
+.analytics-big-number {
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-big-number.danger {
+  color: var(--danger);
+}
+
+.analytics-big-number.secondary {
+  color: var(--secondary);
+}
+
+.analytics-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.analytics-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.analytics-legend-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.analytics-legend-dot.completed,
+.analytics-bar-seg.completed {
+  background-color: var(--accent);
+}
+
+.analytics-legend-dot.missed,
+.analytics-bar-seg.missed {
+  background-color: color-mix(in srgb, var(--danger) 30%, var(--surface));
+  border: 1px solid var(--danger);
+}
+
+.analytics-legend-dot.unlogged,
+.analytics-bar-seg.unlogged {
+  background: repeating-linear-gradient(45deg, var(--surface), var(--surface) 3px, var(--border) 3px, var(--border) 5px);
+  border: 1px solid var(--border);
+}
+
+.analytics-bars {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.analytics-bar-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.analytics-bar-count {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 0.4rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.analytics-bar-track {
+  width: 100%;
+  max-width: 2.75rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.analytics-bar-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.analytics-bar-seg {
+  min-height: 4px;
+}
+
+.analytics-bar-day {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 0.6rem;
+}
+
+.analytics-bar-day.today {
+  color: var(--accent);
+}
+
+.analytics-bar-caption {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-align: center;
+  min-height: 1.8rem;
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+}
+
+.analytics-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.analytics-summary-list {
+  margin: 0 0 0.75rem 0;
+  padding-left: 1.2rem;
+}
+
+.analytics-summary-list li + li {
+  margin-top: 0.35rem;
+}
+
+.analytics-summary-suggestion {
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-left: 3px solid var(--accent);
+}
+
+.analytics-session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.analytics-session-row:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.analytics-session-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1 1 18rem;
+}
+
+.analytics-session-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.analytics-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  margin-left: auto;
+}
+
+.analytics-status.done {
+  background-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.analytics-status.missed {
+  background-color: color-mix(in srgb, var(--danger) 18%, var(--surface));
+  color: var(--danger);
+}
+
+.analytics-status.unlogged {
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.analytics-session-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.analytics-minutes-input {
+  width: 5rem;
+}
+
+.analytics-question {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.6rem;
+}
+
+.analytics-pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+/* A visually-hidden radio inside each pill keeps the check-in a plain,
+   keyboard-accessible form post - no JS needed to pick an answer. */
+.analytics-pill {
+  position: relative;
+  margin: 0;
+  cursor: pointer;
+}
+
+.analytics-pill input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.analytics-pill span {
+  display: inline-block;
+  font-weight: 600;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.analytics-pill:hover span {
+  border-color: var(--accent);
+}
+
+.analytics-pill input:checked + span {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.analytics-pill input:focus-visible + span {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+@media (max-width: 576px) {
+  .analytics-stat-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analytics-bars {
+    gap: 0.35rem;
+  }
+
+  .analytics-bar-caption {
+    display: none;
+  }
+}
+
+/* ---------- Session reminder card (every signed-in page) ----------
+   Matches the signed-off reminders mockup; colours come from the
+   palette variables so it follows the student's chosen palette. */
+
+.session-reminder {
+  position: fixed;
+  right: 2rem;
+  bottom: 2rem;
+  z-index: 1080;
+  width: min(27.5rem, calc(100vw - 2rem));
+}
+
+.session-reminder-card {
+  background-color: color-mix(in srgb, var(--surface) 60%, #ffffff);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.18), 0 3px 10px rgba(0, 0, 0, 0.08);
+  padding: 1.25rem 1.5rem 1.5rem;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+}
+
+.session-reminder-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.session-reminder-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 18%, var(--surface));
+}
+
+.session-reminder-eyebrow,
+.session-reminder-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.session-reminder-eyebrow {
+  flex-grow: 1;
+}
+
+.session-reminder-close {
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: -0.5rem -0.75rem -0.5rem 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-reminder-close:hover {
+  background-color: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.session-reminder-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.session-reminder-course {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.session-reminder-dot {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.session-reminder-title {
+  font-size: 1.3rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.session-reminder-meta,
+.session-reminder-note,
+.session-reminder-text.muted {
+  color: var(--text-muted);
+}
+
+.session-reminder-meta,
+.session-reminder-note {
+  font-size: 0.875rem;
+}
+
+.session-reminder-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.session-reminder-question {
+  font-weight: 600;
+}
+
+.session-reminder-question.danger {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--danger);
+}
+
+.session-reminder-text {
+  line-height: 1.5;
+}
+
+.session-reminder-done {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.session-reminder-body .btn {
+  min-height: 2.85rem;
+  font-weight: 600;
+}
+
+.session-reminder-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.session-reminder-row > .btn {
+  flex: 1 1 8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.session-reminder-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.session-reminder-pill {
+  min-height: 2.75rem;
+  padding: 0 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.session-reminder-pill:hover {
+  border-color: var(--accent);
+}
+
+.session-reminder-pill.selected {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.session-reminder-pill.danger.selected {
+  background-color: var(--danger);
+  border-color: var(--danger);
+}
+
+.session-reminder-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.session-reminder-slot {
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.session-reminder-slot.selected {
+  background-color: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  border: 2px solid var(--accent);
+  color: var(--text);
+}
+
+.session-reminder-slot-detail {
+  font-size: 0.82rem;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.session-reminder-error {
+  font-size: 0.875rem;
+  color: var(--danger);
+}
+
+.session-reminder-error:empty {
+  display: none;
+}
+
+@media (max-width: 576px) {
+  .session-reminder {
+    right: 1rem;
+    bottom: 1rem;
+  }
+}

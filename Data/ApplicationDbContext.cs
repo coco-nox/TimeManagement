@@ -29,6 +29,14 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
 
     public DbSet<WeeklyCheckIn> WeeklyCheckIns => Set<WeeklyCheckIn>();
 
+    public DbSet<WeeklySummary> WeeklySummaries => Set<WeeklySummary>();
+
+    public DbSet<StudyDocument> StudyDocuments => Set<StudyDocument>();
+
+    public DbSet<StudySession> StudySessions => Set<StudySession>();
+
+    public DbSet<StudyGuide> StudyGuides => Set<StudyGuide>();
+
     public DbSet<AvailabilityBlock> AvailabilityBlocks => Set<AvailabilityBlock>();
 
     public DbSet<StudyPreference> StudyPreferences => Set<StudyPreference>();
@@ -44,7 +52,19 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         base.OnModelCreating(builder);
 
         // Adds one extra required column to Identity's built-in user table.
-        builder.Entity<ApplicationUser>(user => user.Property(u => u.FullName).HasMaxLength(100).IsRequired());
+        // (Reminder settings default in ApplicationUser itself; the
+        // AddSessionReminders migration gives existing accounts the same
+        // defaults - on, 15 minutes - without a database default, which
+        // would turn a deliberate "false" into "true" on insert.)
+        builder.Entity<ApplicationUser>(user =>
+        {
+            user.Property(u => u.FullName).HasMaxLength(100).IsRequired();
+            user.Property(u => u.TelegramUsername).HasMaxLength(64);
+            user.Property(u => u.TelegramLinkCode).HasMaxLength(64);
+            // The bot looks the student up by chat id on every button tap.
+            user.HasIndex(u => u.TelegramChatId);
+            user.HasIndex(u => u.TelegramLinkCode);
+        });
 
         // A course belongs to one user; indexed since every course query
         // filters by owner.
@@ -152,7 +172,10 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         builder.Entity<CalendarTask>(task =>
         {
             task.Property(t => t.Title).HasMaxLength(200).IsRequired();
+            task.Property(t => t.MissedReason).HasMaxLength(300);
             task.HasIndex(t => t.UserId);
+            // The reminder email job looks up sessions by start time every minute.
+            task.HasIndex(t => t.ScheduledStart);
 
             task.HasOne(t => t.User)
                 .WithMany()
@@ -165,16 +188,104 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
-        // A weekly check-in belongs to one user.
+        // A weekly check-in belongs to one user, at most one per week - the
+        // Analytics page updates the week's row in place when saved again.
         builder.Entity<WeeklyCheckIn>(checkIn =>
         {
             checkIn.Property(c => c.Mood).HasMaxLength(50).IsRequired();
+            checkIn.Property(c => c.ComparedToLastWeek).HasMaxLength(50).IsRequired().HasDefaultValue(string.Empty);
             checkIn.Property(c => c.ScheduleFit).HasMaxLength(50).IsRequired();
+            checkIn.Property(c => c.Preparedness).HasMaxLength(50).IsRequired().HasDefaultValue(string.Empty);
+            checkIn.Property(c => c.Feedback).HasMaxLength(1000);
             checkIn.HasIndex(c => c.UserId);
+            checkIn.HasIndex(c => new { c.UserId, c.WeekEnding }).IsUnique();
 
             checkIn.HasOne(c => c.User)
                 .WithMany()
                 .HasForeignKey(c => c.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // A paper written in the Tutor's Write tab. Deleting the course
+        // deletes its papers (like its documents); deleting the assessment
+        // a paper was for just detaches it, so the writing is never lost.
+        builder.Entity<StudyDocument>(document =>
+        {
+            document.Property(d => d.Title).HasMaxLength(200).IsRequired();
+            document.Property(d => d.ContentHtml).IsRequired();
+            document.HasIndex(d => new { d.UserId, d.CourseId });
+
+            document.HasOne(d => d.User)
+                .WithMany()
+                .HasForeignKey(d => d.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            document.HasOne(d => d.Course)
+                .WithMany()
+                .HasForeignKey(d => d.CourseId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            document.HasOne(d => d.Assessment)
+                .WithMany()
+                .HasForeignKey(d => d.AssessmentId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // One study guide per assessment, deleted with it.
+        builder.Entity<StudyGuide>(guide =>
+        {
+            guide.Property(g => g.ContentJson).IsRequired();
+            guide.Property(g => g.SourceNames).HasMaxLength(1000).IsRequired();
+            guide.HasIndex(g => g.AssessmentId).IsUnique();
+
+            guide.HasOne(g => g.User)
+                .WithMany()
+                .HasForeignKey(g => g.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            guide.HasOne(g => g.Assessment)
+                .WithMany()
+                .HasForeignKey(g => g.AssessmentId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // A timed study session. Deleting its Calendar session or course
+        // just detaches it - the time studied still counts on Analytics.
+        builder.Entity<StudySession>(session =>
+        {
+            session.Property(s => s.Title).HasMaxLength(200).IsRequired();
+            session.HasIndex(s => new { s.UserId, s.EndedUtc });
+            session.HasIndex(s => new { s.UserId, s.StartedUtc });
+            session.Ignore(s => s.TotalSeconds);
+            session.Ignore(s => s.StudiedSeconds);
+
+            session.HasOne(s => s.User)
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            session.HasOne(s => s.CalendarTask)
+                .WithMany()
+                .HasForeignKey(s => s.CalendarTaskId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            session.HasOne(s => s.Course)
+                .WithMany()
+                .HasForeignKey(s => s.CourseId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // One saved AI summary per user per week (see WeeklySummary.InputHash
+        // for when it's rewritten).
+        builder.Entity<WeeklySummary>(summary =>
+        {
+            summary.Property(s => s.InputHash).HasMaxLength(64).IsRequired();
+            summary.Property(s => s.ContentJson).IsRequired();
+            summary.HasIndex(s => new { s.UserId, s.WeekStart }).IsUnique();
+
+            summary.HasOne(s => s.User)
+                .WithMany()
+                .HasForeignKey(s => s.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

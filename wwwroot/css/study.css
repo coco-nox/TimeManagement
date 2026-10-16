@@ -1,0 +1,507 @@
+/*
+  Study workspace styles: the study-session timer bar, "Still studying?"
+  prompt and end-of-session summary (every signed-in page), and the Tutor's
+  Write and Study guide tabs. From the signed-off study workspace mockup;
+  colours come from the palette variables (palettes.css) so everything
+  follows the student's chosen palette.
+*/
+
+/* ---------- Session timer bar ---------- */
+
+.study-bar {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 1030;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.9rem 1.1rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  background-color: color-mix(in srgb, var(--accent) 14%, var(--surface));
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+}
+
+.study-bar.idle,
+.study-bar.on-break {
+  border-color: color-mix(in srgb, var(--secondary) 50%, var(--border));
+  background-color: color-mix(in srgb, var(--secondary) 12%, var(--surface));
+}
+
+.study-bar-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background-color: var(--accent);
+}
+
+.study-bar.idle .study-bar-dot,
+.study-bar.on-break .study-bar-dot {
+  background-color: var(--secondary);
+}
+
+.study-bar-info {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.study-bar-state {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.study-bar-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.study-bar-times {
+  text-align: right;
+}
+
+.study-bar-clock {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.study-bar-split {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.study-bar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.study-bar-actions .btn {
+  min-height: 2.5rem;
+  font-weight: 600;
+}
+
+/* ---------- "Still studying?" and the summary ---------- */
+
+.study-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1090;
+  background-color: rgba(30, 27, 23, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.study-dialog {
+  width: min(30rem, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  background-color: color-mix(in srgb, var(--surface) 60%, #ffffff);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  padding: 1.6rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  color: var(--text);
+}
+
+.study-dialog-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.study-dialog-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.study-dialog-text {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.study-dialog-text.muted,
+.study-dialog-note {
+  color: var(--text-muted);
+}
+
+.study-dialog-note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.study-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  min-height: 3.25rem;
+  padding: 0.65rem 1.1rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+
+.study-choice.primary {
+  border-color: var(--accent);
+  background-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.study-choice-main {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.study-choice-sub {
+  font-size: 0.82rem;
+  opacity: 0.9;
+}
+
+.study-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.study-stat {
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem;
+  background-color: var(--surface);
+}
+
+.study-stat.good {
+  background-color: color-mix(in srgb, var(--accent) 16%, var(--surface));
+}
+
+.study-stat.warn {
+  background-color: color-mix(in srgb, var(--secondary) 16%, var(--surface));
+}
+
+.study-stat-value {
+  font-size: 1.55rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.study-stat-unit {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.study-stat-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.study-split,
+.analytics-studied-bar {
+  height: 0.85rem;
+  border-radius: 999px;
+  overflow: hidden;
+  display: flex;
+  gap: 2px;
+  background-color: var(--surface);
+}
+
+.study-split-active,
+.analytics-studied-seg.active {
+  background-color: var(--accent);
+}
+
+.study-split-offline,
+.analytics-studied-seg.offline {
+  background: repeating-linear-gradient(45deg, var(--accent), var(--accent) 3px, color-mix(in srgb, var(--accent) 45%, var(--surface)) 3px, color-mix(in srgb, var(--accent) 45%, var(--surface)) 6px);
+}
+
+.study-split-inactive,
+.analytics-studied-seg.inactive {
+  background-color: color-mix(in srgb, var(--secondary) 60%, var(--surface));
+}
+
+.analytics-studied-bar.untracked {
+  border: 1px dashed var(--border);
+}
+
+.study-split-legend {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: -0.4rem;
+}
+
+.study-done {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.study-done li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.study-done li:last-child {
+  border-bottom: none;
+}
+
+.study-adjust {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.study-adjust input {
+  width: 5rem;
+}
+
+.study-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.study-dialog-actions .btn {
+  min-height: 2.75rem;
+  font-weight: 600;
+}
+
+.study-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 1095;
+  padding: 0.75rem 1.1rem;
+  border-radius: 10px;
+  background-color: var(--text);
+  color: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+
+.study-toast a {
+  color: inherit;
+  font-weight: 600;
+}
+
+/* ---------- Analytics › Time actually studied ---------- */
+
+.analytics-studied-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.analytics-studied-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 16rem) minmax(0, 1fr) minmax(10rem, 18rem);
+  gap: 1rem;
+  align-items: center;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--border);
+}
+
+/* ---------- Tutor › Write ---------- */
+
+.write-paper-link {
+  display: block;
+  padding: 0.6rem 0.8rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.write-paper-link:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.write-paper-link.active {
+  border: 2px solid var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 10%, var(--surface));
+}
+
+.write-new > summary {
+  list-style: none;
+}
+
+.write-new > summary::-webkit-details-marker {
+  display: none;
+}
+
+.write-editor-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--surface);
+  overflow: hidden;
+}
+
+.write-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.write-title-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0.25rem 0.4rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.write-title-input:hover,
+.write-title-input:focus {
+  border-color: var(--border);
+  background-color: #ffffff;
+  outline: none;
+}
+
+.write-save-status {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+#writeToolbar.ql-toolbar.ql-snow {
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-family: inherit;
+  padding: 0.4rem 0.6rem;
+}
+
+.write-table-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.write-desk {
+  background-color: color-mix(in srgb, var(--border) 25%, var(--page-bg));
+  padding: 1.5rem 1rem;
+}
+
+.write-paper {
+  max-width: 46rem;
+  margin: 0 auto;
+  background-color: #ffffff;
+  color: #1f1b17;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  border-radius: 2px;
+}
+
+.write-paper .ql-container.ql-snow {
+  border: none;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+}
+
+.write-paper .ql-editor {
+  min-height: 60vh;
+  padding: 3rem 3.5rem;
+  line-height: 1.6;
+}
+
+.write-paper .ql-editor table td {
+  border: 1px solid #d8cdb9;
+}
+
+/* ---------- Tutor › Study guide ---------- */
+
+.study-guide-paper {
+  padding: 3rem 3.5rem;
+  font-size: 0.98rem;
+  line-height: 1.55;
+}
+
+.study-guide-title {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.9rem;
+  margin: 0.3rem 0 0.2rem;
+}
+
+.study-guide-paper h2:not(.study-guide-title) {
+  font-size: 1.1rem;
+  font-weight: 700;
+  border-bottom: 2px solid var(--accent);
+  padding-bottom: 0.25rem;
+  margin: 1.5rem 0 0.6rem;
+}
+
+.study-guide-paper h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 1rem 0 0.3rem;
+}
+
+.study-guide-paper table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.5rem;
+}
+
+.study-guide-paper th,
+.study-guide-paper td {
+  border: 1px solid #e0d6c4;
+  padding: 0.45rem 0.65rem;
+  vertical-align: top;
+}
+
+.study-guide-paper th {
+  background-color: #f2ede2;
+  width: 30%;
+}
+
+@media (max-width: 768px) {
+  .analytics-studied-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analytics-studied-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.4rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .write-paper .ql-editor,
+  .study-guide-paper {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .study-bar-times {
+    text-align: left;
+  }
+}

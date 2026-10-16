@@ -61,7 +61,13 @@
 
         <hr class="my-3" />
 
-        <div class="small text-muted text-uppercase fw-semibold mb-2">Today's study sessions</div>
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <div class="small text-muted text-uppercase fw-semibold">Today's study sessions</div>
+            @if (Model.TodaysSessions.Any())
+            {
+                <a asp-page="/Analytics/Index" asp-fragment="sessions" class="small">Log how they went &rarr;</a>
+            }
+        </div>
         @if (!Model.TodaysSessions.Any())
         {
             <p class="text-muted small mb-0">Nothing scheduled for today. <a asp-page="/Calendar/Index">Set up your availability</a> and generate a schedule to get study sessions here.</p>
@@ -74,7 +80,15 @@
                     <li class="list-group-item px-0 d-flex align-items-center gap-2">
                         <span style="width: 0.6rem; height: 0.6rem; border-radius: 50%; background-color: @session.ColourHex; flex-shrink: 0;"></span>
                         <span class="small fw-semibold">@session.ScheduledStart.ToString("h:mm tt")</span>
-                        <span class="small">@session.Title</span>
+                        <span class="small flex-grow-1">@session.Title</span>
+                        @if (!session.IsLogged)
+                        {
+                            <form method="post" asp-page="/Study/Index" asp-page-handler="Start" class="m-0">
+                                <input type="hidden" name="taskId" value="@session.TaskId" />
+                                <input type="hidden" name="returnUrl" value="@Url.Page("/Tutor/Write", new { courseId = session.CourseId })" />
+                                <button type="submit" class="btn btn-sm btn-outline-secondary" title="Start the study timer and open the Tutor">Start</button>
+                            </form>
+                        }
                     </li>
                 }
             </ul>
@@ -144,7 +158,6 @@ else
             <span class="coming-soon-chip"><span aria-hidden="true">⏱️</span> Time tracking that learns</span>
             <span class="coming-soon-chip"><span aria-hidden="true">🔔</span> Live nudges</span>
             <span class="coming-soon-chip"><span aria-hidden="true">🎯</span> Smart categories</span>
-            <span class="coming-soon-chip"><span aria-hidden="true">📊</span> Weekly check-in</span>
             <span class="coming-soon-chip"><span aria-hidden="true">💬</span> Chat with your planner</span>
         </div>
     </div>

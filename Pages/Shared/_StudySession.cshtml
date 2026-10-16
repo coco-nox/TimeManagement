@@ -1,0 +1,6 @@
+@* The study-session timer bar, "Still studying?" prompt and end-of-session
+   summary, on every signed-in page (see _Layout). Empty until
+   wwwroot/js/study-session.js finds a running session. *@
+<div id="studySession" data-url="@Url.Page("/Study/Index")" hidden></div>
+<form id="studySessionAntiForgery" style="display:none;">@Html.AntiForgeryToken()</form>
+<script src="~/js/study-session.js" asp-append-version="true"></script>

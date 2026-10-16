@@ -1,10 +1,6 @@
-using System.Net;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using TimeManagement.Models;
 
 namespace TimeManagement.Services;
@@ -20,9 +16,9 @@ namespace TimeManagement.Services;
 /// It is not limited to what the brief spells out - sections the brief
 /// doesn't mention but a strong report would include are added and marked
 /// as Suggested rather than Brief. With no readable document it still
-/// designs a report from the course and assessment title alone. Reuses the
-/// same AI provider config as the other AI features (same appsettings.json
-/// "Gemini" section, same HTTP endpoint) rather than a separate integration.
+/// designs a report from the course and assessment title alone. Sent through
+/// <see cref="AiClient"/> as <see cref="AiTask.ReportChecklist"/> - see the
+/// appsettings.json "AiRouting" section for which provider handles it.
 ///
 /// Always returns a usable checklist, never an error the caller has to
 /// handle: with no AI configured or a request that fails outright,
@@ -33,14 +29,9 @@ namespace TimeManagement.Services;
 /// checklist, not as its own user-facing action with a retry button - it
 /// should never be the reason one of those actions fails.
 /// </summary>
-public sealed partial class ReportChecklistGenerationService(
-    HttpClient httpClient,
-    IOptions<DocumentCategorizationOptions> options,
-    ILogger<ReportChecklistGenerationService> logger)
+public sealed partial class ReportChecklistGenerationService(AiClient aiClient)
 {
-    private readonly HttpClient _httpClient = httpClient;
-    private readonly ILogger<ReportChecklistGenerationService> _logger = logger;
-    private readonly DocumentCategorizationOptions _options = options.Value;
+    private readonly AiClient _aiClient = aiClient;
 
     // Same budget reasoning as TutorChatService.BuildContext.
     private const int TotalContextCharBudget = 12_000;
@@ -130,7 +121,7 @@ public sealed partial class ReportChecklistGenerationService(
         IReadOnlyList<TutorSourceDocument> documents,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+        if (!_aiClient.IsConfigured)
         {
             return null;
         }
@@ -142,15 +133,8 @@ public sealed partial class ReportChecklistGenerationService(
         var context = usableDocuments.Count > 0 ? BuildContext(usableDocuments) : string.Empty;
         var prompt = BuildPrompt(courseTitle, assessmentTitle, context);
 
-        var payload = new
-        {
-            systemInstruction = new
-            {
-                parts = new[]
-                {
-                    new
-                    {
-                        text = "You are an experienced university tutor helping a student plan a Report-category " +
+        var request = new AiRequest(
+            SystemInstruction: "You are an experienced university tutor helping a student plan a Report-category " +
                                "assessment. Design the structure of the report they should write, in two steps. " +
                                "STEP 1 - use your own expertise: work out what kind of report this is for this " +
                                "subject (e.g. technical project report, lab report, business case, literature " +
@@ -182,70 +166,23 @@ public sealed partial class ReportChecklistGenerationService(
                                "(string like \"20%\" or \"15 marks\" when the brief gives one, else null), " +
                                "\"wordCount\" (integer or null), \"source\" (\"brief\" or \"suggested\"), " +
                                "\"guidance\" (string), \"subsections\" (array of strings), and " +
-                               "\"briefRequirements\" (array of strings))."
-                    }
-                }
-            },
-            contents = new[]
-            {
-                new { role = "user", parts = new[] { new { text = prompt } } }
-            },
-            generationConfig = new { temperature = 0.3, responseMimeType = "application/json" }
-        };
+                               "\"briefRequirements\" (array of strings)).",
+            Prompt: prompt,
+            Temperature: 0.3,
+            JsonOutput: true);
 
-        _httpClient.DefaultRequestHeaders.Remove("x-goog-api-key");
-        _httpClient.DefaultRequestHeaders.Add("x-goog-api-key", _options.ApiKey);
+        // AiClient never throws for provider problems and already retries
+        // on the other provider, so a null Value here just means "fall back
+        // to the default checklist" (see the class summary) - the failure
+        // itself is logged by AiClient. A design with no sections counts as
+        // unusable, so it also triggers that retry.
+        var result = await _aiClient.AskAsync(
+            AiTask.ReportChecklist,
+            request,
+            text => ParseResponse(text) is { Sections.Count: > 0 } design ? design : null,
+            cancellationToken);
 
-        var requestUri = $"{_options.Endpoint}/{_options.Model}:generateContent";
-
-        try
-        {
-            var response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
-
-            // Gemini answers 503 ("overloaded") often enough to matter, and
-            // there's no retry button here - one short retry before giving
-            // up and falling back to the default checklist.
-            if (response.StatusCode == HttpStatusCode.ServiceUnavailable)
-            {
-                response.Dispose();
-                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-                response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
-            }
-
-            using var _ = response;
-            if (!response.IsSuccessStatusCode)
-            {
-                var failureBody = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Report plan generation request to Gemini failed with HTTP {StatusCode}. Response body: {Body}",
-                    (int)response.StatusCode, failureBody);
-                return null;
-            }
-
-            var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-            var json = JsonDocument.Parse(responseJson);
-            var root = json.RootElement;
-
-            if (root.TryGetProperty("candidates", out var candidates) && candidates.ValueKind == JsonValueKind.Array && candidates.GetArrayLength() > 0)
-            {
-                var parts = candidates[0].GetProperty("content").GetProperty("parts");
-                var assistantText = parts.GetArrayLength() > 0 ? parts[0].GetProperty("text").GetString() : null;
-
-                if (!string.IsNullOrWhiteSpace(assistantText))
-                {
-                    return ParseResponse(assistantText);
-                }
-            }
-        }
-        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException or KeyNotFoundException or InvalidOperationException)
-        {
-            // Swallowed deliberately - see the class summary: this always
-            // degrades to the default checklist rather than failing the
-            // upload/archive action it's running inside of.
-            _logger.LogWarning(ex, "Report plan generation failed; falling back to the default checklist.");
-        }
-
-        return null;
+        return result.Value;
     }
 
     // Same excerpt-concatenation approach as TutorChatService.BuildContext.

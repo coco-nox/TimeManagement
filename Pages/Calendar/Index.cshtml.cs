@@ -275,7 +275,8 @@ public class IndexModel(
     /// painted availability, their Preferences-tab settings, and their
     /// upcoming Report/Quiz/Test due dates, then saves it as CalendarTask
     /// rows. Always replaces this week's previous AI plan first (see the
-    /// RemoveRange below) rather than adding to it, so a student who blocks
+    /// RemoveRange below - only sessions already logged as Done/Missed on
+    /// the Analytics page survive) rather than adding to it, so a student who blocks
     /// off newly-unavailable time and regenerates gets a plan that actually
     /// respects the change, instead of old sessions surviving untouched next
     /// to new ones. The AI is instructed not to pad the week just because
@@ -303,11 +304,25 @@ public class IndexModel(
             return RedirectToPage(new { weekOffset, tab = "week" });
         }
 
+        // Sessions already logged on the Analytics page (Done or Missed) are
+        // the week's history, not part of the plan being replaced - they're
+        // kept and their hours stay occupied (BuildAvailableCellSetAsync
+        // skips any cell a remaining task covers). Only Done sessions' time
+        // counts against this week's hour budgets below - a missed session
+        // didn't use any study time.
         var existingTasks = await _db.CalendarTasks
+            .Include(t => t.Assessment)
             .Where(t => t.UserId == user.Id && t.ScheduledStart >= weekStart && t.ScheduledStart < weekEnd)
             .ToListAsync();
-        _db.CalendarTasks.RemoveRange(existingTasks);
+        var keptTasks = existingTasks.Where(t => t.IsLogged).ToList();
+        _db.CalendarTasks.RemoveRange(existingTasks.Where(t => !t.IsLogged));
         await _db.SaveChangesAsync();
+
+        var keptMinutes = keptTasks.Where(t => t.IsCompleted).Sum(t => t.ActualMinutes ?? t.PlannedMinutes);
+        var keptMinutesByCourse = keptTasks
+            .Where(t => t.IsCompleted && t.Assessment != null)
+            .GroupBy(t => t.Assessment!.CourseId)
+            .ToDictionary(g => g.Key, g => g.Sum(t => t.ActualMinutes ?? t.PlannedMinutes));
 
         // Only courses the student actually allocated time to are eligible -
         // a course left at 0 hours/week is a clear "not this week" signal,
@@ -346,12 +361,30 @@ public class IndexModel(
             return RedirectToPage(new { weekOffset, tab = "week" });
         }
 
+        // The AI is told the hours still left after kept sessions, so it
+        // plans for what's actually available rather than having most of
+        // its plan thrown away by AcceptSessions' caps.
+        var remainingWeeklyHours = Math.Max(0, (preference.TotalWeeklyHours * 60 - keptMinutes) / 60);
+        if (remainingWeeklyHours == 0)
+        {
+            ErrorMessage = "The sessions you've already logged this week use up your weekly study hours - there's nothing left to schedule.";
+            return RedirectToPage(new { weekOffset, tab = "week" });
+        }
+
         var eligibleAssessments = assessments
             .Select(a => new EligibleAssessment(
-                a.Id, a.CourseId, a.Course!.Title, a.Title, a.Category.ToString(), a.DueDate!.Value, courseHoursById[a.CourseId]))
+                a.Id, a.CourseId, a.Course!.Title, a.Title, a.Category.ToString(), a.DueDate!.Value,
+                Math.Max(0, (courseHoursById[a.CourseId] * 60 - keptMinutesByCourse.GetValueOrDefault(a.CourseId)) / 60)))
+            .Where(a => a.CourseHoursPerWeek > 0)
             .ToList();
 
-        var result = await _calendarSchedulingService.GenerateAsync(windows, eligibleAssessments, preference.TotalWeeklyHours);
+        if (eligibleAssessments.Count == 0)
+        {
+            ErrorMessage = "The sessions you've already logged this week use up every course's weekly hours - there's nothing left to schedule.";
+            return RedirectToPage(new { weekOffset, tab = "week" });
+        }
+
+        var result = await _calendarSchedulingService.GenerateAsync(windows, eligibleAssessments, remainingWeeklyHours);
 
         if (result.Sessions.Count == 0)
         {
@@ -362,7 +395,8 @@ public class IndexModel(
         var availableCells = await BuildAvailableCellSetAsync(user.Id, weekStart, weekEnd);
         var assessmentsById = assessments.ToDictionary(a => a.Id);
 
-        var accepted = AcceptSessions(result.Sessions, availableCells, assessmentsById, courseHoursById, preference.TotalWeeklyHours);
+        var accepted = AcceptSessions(result.Sessions, availableCells, assessmentsById, courseHoursById, preference.TotalWeeklyHours,
+            keptMinutes, keptMinutesByCourse);
 
         foreach (var session in accepted)
         {
@@ -494,6 +528,89 @@ public class IndexModel(
     /// and skips any cell already covered by a fixed CalendarTask, same as
     /// the regular paint handler.
     /// </summary>
+    /// <summary>
+    /// Copies the previous week's painted Available/Blocked hours onto the
+    /// displayed week, shifted forward 7 days, so a student whose week looks
+    /// much like the last one can start from that and touch up a few cells
+    /// instead of repainting everything. Replaces this week's painting rather
+    /// than merging with it (the button confirms first when there is any).
+    /// Cells covered by a scheduled CalendarTask are left untouched on both
+    /// sides, same as BlockNonStudyDaysAsync - copying never cancels a
+    /// session; painting over one by hand still does.
+    /// </summary>
+    public async Task<IActionResult> OnPostCopyPreviousWeekAsync(int weekOffset)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return NotFound();
+        }
+
+        var weekStart = GetWeekStart(weekOffset);
+        var weekEnd = weekStart.AddDays(7);
+        var previousWeekStart = weekStart.AddDays(-7);
+
+        var previousBlocks = await _db.AvailabilityBlocks
+            .Where(b => b.UserId == user.Id && b.Date >= previousWeekStart && b.Date < weekStart)
+            .ToListAsync();
+
+        if (previousBlocks.Count == 0)
+        {
+            ErrorMessage = "Nothing was painted last week, so there's nothing to copy.";
+            return RedirectToPage(new { weekOffset, tab = "week" });
+        }
+
+        var scheduledCells = await BuildScheduledCellSetAsync(user.Id, weekStart, weekEnd);
+
+        var currentByCell = (await _db.AvailabilityBlocks
+                .Where(b => b.UserId == user.Id && b.Date >= weekStart && b.Date < weekEnd)
+                .ToListAsync())
+            .ToDictionary(b => (b.Date, b.Hour));
+
+        // Upsert in place (same as the paint handler) rather than delete +
+        // re-insert, so the unique UserId+Date+Hour index is never briefly
+        // violated within the save.
+        var copiedCells = new HashSet<(DateTime, int)>();
+        foreach (var block in previousBlocks)
+        {
+            var cell = (block.Date.AddDays(7), block.Hour);
+            if (scheduledCells.Contains(cell))
+            {
+                continue;
+            }
+
+            if (currentByCell.TryGetValue(cell, out var existing))
+            {
+                existing.Kind = block.Kind;
+            }
+            else
+            {
+                _db.AvailabilityBlocks.Add(new AvailabilityBlock
+                {
+                    UserId = user.Id,
+                    Date = cell.Item1,
+                    Hour = block.Hour,
+                    Kind = block.Kind
+                });
+            }
+
+            copiedCells.Add(cell);
+        }
+
+        // Anything painted this week that last week left empty is cleared,
+        // so the result matches last week exactly.
+        _db.AvailabilityBlocks.RemoveRange(currentByCell
+            .Where(kv => !copiedCells.Contains(kv.Key) && !scheduledCells.Contains(kv.Key))
+            .Select(kv => kv.Value));
+
+        var copied = copiedCells.Count;
+
+        await _db.SaveChangesAsync();
+
+        StatusMessage = $"Copied {copied} painted hour{(copied == 1 ? "" : "s")} from last week. Adjust any cells that are different this week.";
+        return RedirectToPage(new { weekOffset, tab = "week" });
+    }
+
     private async Task BlockNonStudyDaysAsync(string userId, DateTime weekStart, List<string> selectedDays)
     {
         var weekEnd = weekStart.AddDays(7);
@@ -677,13 +794,16 @@ public class IndexModel(
         HashSet<(DateTime Date, int Hour)> availableCells,
         Dictionary<int, Assessment> assessmentsById,
         Dictionary<int, int> courseHoursPerWeekById,
-        int totalWeeklyHours)
+        int totalWeeklyHours,
+        int alreadyUsedMinutes,
+        Dictionary<int, int> alreadyUsedMinutesByCourse)
     {
         var totalCapMinutes = totalWeeklyHours * 60;
         var courseCapMinutes = courseHoursPerWeekById.ToDictionary(kv => kv.Key, kv => kv.Value * 60);
 
-        var totalMinutesUsed = 0;
-        var courseMinutesUsed = new Dictionary<int, int>();
+        // Starts from the time logged sessions already used this week.
+        var totalMinutesUsed = alreadyUsedMinutes;
+        var courseMinutesUsed = new Dictionary<int, int>(alreadyUsedMinutesByCourse);
         var claimedCells = new HashSet<(DateTime, int)>();
         var accepted = new List<ScheduleSuggestion>();
 
@@ -799,12 +919,7 @@ public class IndexModel(
     }
 
     /// <summary>Monday of the week `offset` weeks from the current one.</summary>
-    private static DateTime GetWeekStart(int offset)
-    {
-        var today = DateTime.Today;
-        var daysSinceMonday = ((int)today.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
-        return today.AddDays(-daysSinceMonday).AddDays(offset * 7);
-    }
+    private static DateTime GetWeekStart(int offset) => StudyWeek.GetWeekStart(offset);
 }
 
 /// <summary>One grid cell's display state: "available", "blocked", or

@@ -1,0 +1,436 @@
+@page
+@using TimeManagement.Models
+@model TimeManagement.Pages.Analytics.IndexModel
+@{
+    ViewData["Title"] = "Analytics";
+    var facts = Model.Facts;
+    var weekEnd = Model.WeekStart.AddDays(6);
+    var maxDaySessions = Math.Max(1, facts.Days.Max(d => d.Scheduled));
+    const int BarMaxPx = 80;
+
+    // Banner: this week's completed sessions vs last week's. "So far" while
+    // the week is still running, so a Tuesday doesn't read as a bad week.
+    var soFar = Model.IsCurrentWeek ? " so far" : "";
+    string? bannerTone = null, bannerTitle = null, bannerDetail = null;
+    if (facts.SessionsCompleted > 0 || facts.PreviousWeekCompleted > 0)
+    {
+        if (facts.SessionsCompleted > facts.PreviousWeekCompleted)
+        {
+            bannerTone = "up";
+            bannerTitle = $"You completed more sessions than last week{soFar}";
+        }
+        else if (facts.SessionsCompleted == facts.PreviousWeekCompleted)
+        {
+            bannerTone = "same";
+            bannerTitle = $"You're level with last week{soFar}";
+        }
+        else
+        {
+            bannerTone = "down";
+            bannerTitle = Model.IsCurrentWeek
+                ? "Fewer sessions done than last week so far - there's still time"
+                : "You completed fewer sessions than last week";
+        }
+        bannerDetail = $"{facts.SessionsCompleted} session{(facts.SessionsCompleted == 1 ? "" : "s")} finished this week, " +
+                       $"{(bannerTone == "up" ? "up from" : bannerTone == "down" ? "down from" : "same as")} {facts.PreviousWeekCompleted} last week";
+    }
+}
+
+<div class="analytics-header">
+    <div>
+        <h1 class="h3 mb-1">Your week in review</h1>
+        <p class="analytics-week-label mb-1">@Model.WeekStart.ToString("d MMM") &ndash; @weekEnd.ToString("d MMM yyyy")</p>
+        <p class="text-muted mb-0">This is about what actually happened this week &mdash; not just what got finished.</p>
+    </div>
+    <div class="calendar-week-nav">
+        <a asp-page="/Analytics/Index" asp-route-weekOffset="@(Model.WeekOffset - 1)" class="btn btn-outline-secondary btn-sm">&larr; Previous week</a>
+        @if (Model.WeekOffset < 0)
+        {
+            <a asp-page="/Analytics/Index" asp-route-weekOffset="@(Model.WeekOffset + 1)" class="btn btn-outline-secondary btn-sm">Next week &rarr;</a>
+            <a asp-page="/Analytics/Index" asp-route-weekOffset="0" class="small">This week</a>
+        }
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(Model.StatusMessage))
+{
+    <div class="alert alert-success py-2">@Model.StatusMessage</div>
+}
+@if (!string.IsNullOrEmpty(Model.ErrorMessage))
+{
+    <div class="alert alert-danger py-2">@Model.ErrorMessage</div>
+}
+
+@if (facts.SessionsScheduled == 0)
+{
+    <div class="card p-4 mb-3">
+        <h2 class="h6 mb-1">No study sessions scheduled this week</h2>
+        <p class="text-muted small mb-0">
+            Analytics tracks the sessions on your <a asp-page="/Calendar/Index" asp-route-tab="week" asp-route-weekOffset="@Model.WeekOffset">Calendar</a>.
+            Paint your available hours there and click <strong>Generate schedule</strong>, then come back here to log how each session went.
+            You can still fill in the check-in below.
+        </p>
+    </div>
+}
+else
+{
+    @if (bannerTone != null)
+    {
+        <div class="analytics-banner @bannerTone">
+            <div class="analytics-banner-icon" aria-hidden="true">
+                @if (bannerTone == "up")
+                {
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="6 11 12 5 18 11"></polyline></svg>
+                }
+                else if (bannerTone == "down")
+                {
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="18 13 12 19 6 13"></polyline></svg>
+                }
+                else
+                {
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                }
+            </div>
+            <div>
+                <div class="analytics-banner-title">@bannerTitle</div>
+                <div class="analytics-banner-detail">@bannerDetail</div>
+            </div>
+        </div>
+    }
+
+    <div class="card p-4 mb-3">
+        <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-3">
+            <h2 class="h5 mb-0">Week summary</h2>
+            <div class="text-end">
+                <div class="analytics-big-number">@facts.SessionsCompleted / @facts.SessionsScheduled</div>
+                <div class="small text-muted">@Model.CompletionPercent% completed</div>
+            </div>
+        </div>
+        <div class="progress" style="height: 0.9rem;" role="progressbar" aria-label="Sessions completed" aria-valuenow="@Model.CompletionPercent" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar" style="width: @(Model.CompletionPercent)%; background-color: var(--accent);"></div>
+        </div>
+        @if (facts.SessionsUnlogged > 0)
+        {
+            <p class="small text-muted mt-2 mb-0">@facts.SessionsUnlogged session@(facts.SessionsUnlogged == 1 ? " isn't" : "s aren't") logged yet &mdash; <a href="#sessions">log them below</a>.</p>
+        }
+    </div>
+
+    <div class="card p-4 mb-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-4">
+            <h2 class="h5 mb-0">Sessions completed this week</h2>
+            <div class="analytics-legend">
+                <span><span class="analytics-legend-dot completed"></span>Completed</span>
+                <span><span class="analytics-legend-dot missed"></span>Missed</span>
+                <span><span class="analytics-legend-dot unlogged"></span>Not logged</span>
+            </div>
+        </div>
+
+        <div class="analytics-bars">
+            @foreach (var day in facts.Days)
+            {
+                var unlogged = day.Scheduled - day.Completed - day.Missed;
+                var pxPerSession = (double)BarMaxPx / maxDaySessions;
+                <div class="analytics-bar-col">
+                    <div class="analytics-bar-count">@(day.Scheduled == 0 ? "–" : $"{day.Completed}/{day.Scheduled}")</div>
+                    <div class="analytics-bar-track" style="height: @(BarMaxPx + 10)px;"
+                         aria-label="@day.Date.ToString("dddd"): @day.Completed completed, @day.Missed missed, @unlogged not logged">
+                        @if (day.Scheduled > 0)
+                        {
+                            <div class="analytics-bar-stack" style="height: @(Math.Round(day.Scheduled * pxPerSession))px;">
+                                @if (unlogged > 0)
+                                {
+                                    <div class="analytics-bar-seg unlogged" style="flex-grow: @unlogged;"></div>
+                                }
+                                @if (day.Missed > 0)
+                                {
+                                    <div class="analytics-bar-seg missed" style="flex-grow: @day.Missed;"></div>
+                                }
+                                @if (day.Completed > 0)
+                                {
+                                    <div class="analytics-bar-seg completed" style="flex-grow: @day.Completed;"></div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="analytics-bar-day @(day.Date == DateTime.Today ? "today" : "")">@day.Date.ToString("ddd")</div>
+                    <div class="analytics-bar-caption">
+                        @if (day.MissedTitles.Count > 0)
+                        {
+                            @($"Missed: {day.MissedTitles[0]}")
+                            @if (day.MissedTitles.Count > 1)
+                            {
+                                @($" +{day.MissedTitles.Count - 1} more")
+                            }
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="analytics-stat-grid mb-3">
+        <div class="card p-4">
+            <h3 class="h6 mb-3">Study sessions missed</h3>
+            <div class="d-flex align-items-baseline gap-2">
+                <div class="analytics-big-number danger">@facts.SessionsMissed</div>
+                <div class="text-muted">of @facts.SessionsScheduled scheduled</div>
+            </div>
+        </div>
+        <div class="card p-4">
+            <h3 class="h6 mb-3">Ran over time</h3>
+            <div class="d-flex align-items-baseline gap-2 mb-2">
+                <div class="analytics-big-number secondary">@facts.Overruns.Count</div>
+                <div class="text-muted">time@(facts.Overruns.Count == 1 ? "" : "s") this week</div>
+            </div>
+            @if (facts.Overruns.Count == 0)
+            {
+                <div class="small text-muted">Enter how long a session actually took when you mark it done, and any that ran long show up here.</div>
+            }
+            @foreach (var overrun in facts.Overruns)
+            {
+                <div class="small text-muted">@overrun.Title ran @overrun.MinutesOver minute@(overrun.MinutesOver == 1 ? "" : "s") over.</div>
+            }
+        </div>
+    </div>
+}
+
+@if (facts.TimedSessions.Any() || facts.SessionsScheduled > 0)
+{
+    var timedDone = facts.TimedSessions.Where(s => !s.IsRunning).ToList();
+    var studiedMinutes = timedDone.Sum(s => s.StudiedMinutes);
+    var inactiveMinutes = timedDone.Sum(s => s.InactiveMinutes);
+    var untimed = Model.UntimedDoneTasks;
+
+    <div class="card p-4 mb-3" id="studied">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+            <div>
+                <h2 class="h5 mb-1">Time actually studied</h2>
+                <p class="text-muted small mb-0">From your session timer, not just what was scheduled. FlightPath can only see activity inside FlightPath, so time away counts as studying only when you said you were working offline.</p>
+            </div>
+            <div class="analytics-legend">
+                <span><span class="analytics-legend-dot completed"></span>Active</span>
+                <span><span class="analytics-legend-dot study-split-offline"></span>Offline (you said)</span>
+                <span><span class="analytics-legend-dot study-split-inactive"></span>Inactive</span>
+            </div>
+        </div>
+
+        <div class="analytics-studied-grid mb-3">
+            <div class="study-stat"><div class="study-stat-value">@TimeManagement.Pages.Analytics.IndexModel.Duration(Model.ScheduledMinutes)</div><div class="study-stat-label">Scheduled</div></div>
+            <div class="study-stat good"><div class="study-stat-value">@TimeManagement.Pages.Analytics.IndexModel.Duration(studiedMinutes)</div><div class="study-stat-label">Actually studied</div></div>
+            <div class="study-stat warn"><div class="study-stat-value">@TimeManagement.Pages.Analytics.IndexModel.Duration(inactiveMinutes)</div><div class="study-stat-label">Inactive in sessions</div></div>
+            <div class="study-stat"><div class="study-stat-value">@untimed.Count</div><div class="study-stat-label">Done without the timer</div></div>
+        </div>
+
+        @if (!facts.TimedSessions.Any() && !untimed.Any())
+        {
+            <p class="text-muted small mb-0">No timed sessions yet. Start one from a session reminder (<strong>OK, continue</strong>), the Dashboard, or <strong>Start studying</strong> in the Tutor - the timer bar then appears at the top of every page.</p>
+        }
+
+        @foreach (var timedSession in facts.TimedSessions)
+        {
+            var total = Math.Max(1, timedSession.TotalMinutes);
+            <div class="analytics-studied-row">
+                <div>
+                    <div class="fw-semibold">@timedSession.Title</div>
+                    <div class="small text-muted">@timedSession.StartLocal.ToString("ddd h:mm tt")@(timedSession.PlannedMinutes > 0 ? $" · {timedSession.PlannedMinutes} min planned" : "")@(timedSession.PlannedMinutes > 0 && timedSession.TotalMinutes > timedSession.PlannedMinutes + 5 ? " · ran over" : "")</div>
+                </div>
+                <div>
+                    @if (timedSession.IsRunning)
+                    {
+                        <div class="analytics-studied-bar untracked"></div>
+                        <div class="small text-muted mt-1">In progress</div>
+                    }
+                    else
+                    {
+                        <div class="analytics-studied-bar" role="img" aria-label="@timedSession.ActiveMinutes minutes active, @timedSession.OfflineMinutes offline, @timedSession.InactiveMinutes inactive">
+                            @if (timedSession.ActiveMinutes > 0) { <div class="analytics-studied-seg active" style="width: @(timedSession.ActiveMinutes * 100.0 / total)%;"></div> }
+                            @if (timedSession.OfflineMinutes > 0) { <div class="analytics-studied-seg offline" style="width: @(timedSession.OfflineMinutes * 100.0 / total)%;"></div> }
+                            @if (timedSession.InactiveMinutes > 0) { <div class="analytics-studied-seg inactive" style="width: @(timedSession.InactiveMinutes * 100.0 / total)%;"></div> }
+                        </div>
+                        <div class="small text-muted mt-1">@(timedSession.TotalMinutes) min total · @timedSession.StudiedMinutes min studied · @timedSession.InactiveMinutes min inactive</div>
+                    }
+                </div>
+                <div class="small">@(timedSession.Achievements ?? (timedSession.IsRunning ? "" : "Nothing recorded in FlightPath"))</div>
+            </div>
+        }
+
+        @foreach (var task in untimed)
+        {
+            <div class="analytics-studied-row">
+                <div>
+                    <div class="fw-semibold">@task.Title</div>
+                    <div class="small text-muted">@task.ScheduledStart.ToString("ddd h:mm tt") · @task.PlannedMinutes min planned</div>
+                </div>
+                <div>
+                    <div class="analytics-studied-bar untracked"></div>
+                    <div class="small text-muted mt-1">Marked done without starting the timer</div>
+                </div>
+                <div class="small text-muted">Nothing tracked - start the timer next time to see this</div>
+            </div>
+        }
+    </div>
+}
+
+<div class="card p-4 mb-3">
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+        <h2 class="h5 mb-0">Your week, summarised</h2>
+        <span class="small text-muted">Written by AI from your sessions and check-in</span>
+    </div>
+    <div id="weeklySummary" data-summary-url="@Url.Page("/Analytics/Index", "Summary", new { weekOffset = Model.WeekOffset })">
+        <p class="text-muted small mb-0" id="weeklySummaryStatus">Writing your summary&hellip;</p>
+    </div>
+</div>
+
+@if (facts.SessionsScheduled > 0)
+{
+    <div class="card p-4 mb-3" id="sessions">
+        <h2 class="h5 mb-1">Log this week's sessions</h2>
+        <p class="text-muted small mb-3">Mark each session done or missed. If a session took longer than planned, enter how long it actually took &mdash; that's what &ldquo;ran over time&rdquo; is counted from.</p>
+
+        <ul class="list-unstyled mb-0 analytics-session-list">
+            @foreach (var session in Model.Sessions)
+            {
+                var task = session.Task;
+                <li class="analytics-session-row">
+                    <div class="analytics-session-info">
+                        <span class="analytics-session-dot" style="background-color: @session.ColourHex;"></span>
+                        <div>
+                            <div class="fw-semibold">@task.Title</div>
+                            <div class="small text-muted">
+                                @task.ScheduledStart.ToString("ddd d MMM, h:mm tt") &middot; @task.PlannedMinutes min planned
+                                @if (task.IsCompleted && task.ActualMinutes is int actual)
+                                {
+                                    @($" · took {actual} min")
+                                }
+                                @if (task.IsMissed && !string.IsNullOrEmpty(task.MissedReason))
+                                {
+                                    @($" · reason: {task.MissedReason}")
+                                }
+                            </div>
+                        </div>
+                        @if (task.IsCompleted)
+                        {
+                            <span class="analytics-status done">Done</span>
+                        }
+                        else if (task.IsMissed)
+                        {
+                            <span class="analytics-status missed">Missed</span>
+                        }
+                        else
+                        {
+                            <span class="analytics-status unlogged">Not logged</span>
+                        }
+                    </div>
+
+                    <form method="post" asp-page-handler="LogSession" class="analytics-session-actions">
+                        <input type="hidden" name="taskId" value="@task.Id" />
+                        <input type="hidden" name="weekOffset" value="@Model.WeekOffset" />
+                        <label class="small text-muted mb-0" for="actualMinutes@(task.Id)">Took</label>
+                        <input type="number" class="form-control form-control-sm analytics-minutes-input" id="actualMinutes@(task.Id)"
+                               name="actualMinutes" min="1" max="600" placeholder="@task.PlannedMinutes" value="@task.ActualMinutes" />
+                        <span class="small text-muted">min</span>
+                        <button type="submit" name="outcome" value="done" class="btn btn-sm @(task.IsCompleted ? "btn-primary" : "btn-outline-primary")">&#10003; Done</button>
+                        <button type="submit" name="outcome" value="missed" formnovalidate class="btn btn-sm @(task.IsMissed ? "btn-danger" : "btn-outline-danger")">&#10007; Missed</button>
+                        @if (task.IsLogged)
+                        {
+                            <button type="submit" name="outcome" value="clear" formnovalidate class="btn btn-sm btn-link text-muted">Clear</button>
+                        }
+                    </form>
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+<div class="card p-4 mb-3" id="checkin">
+    <h2 class="h5 mb-3">How was your week?</h2>
+    <form method="post" asp-page-handler="SaveCheckIn">
+        <input type="hidden" name="weekOffset" value="@Model.WeekOffset" />
+
+        @{
+            var questions = new (string Name, string Label, string[] Options, string? Selected)[]
+            {
+                ("mood", "Overall mood", WeeklyCheckIn.MoodOptions, Model.CheckIn?.Mood),
+                ("comparedToLastWeek", "Compared to last week?", WeeklyCheckIn.ComparedOptions, Model.CheckIn?.ComparedToLastWeek),
+                ("scheduleFit", "Did your schedule feel right?", WeeklyCheckIn.ScheduleFitOptions, Model.CheckIn?.ScheduleFit),
+                ("preparedness", "How prepared do you feel for what's coming up?", WeeklyCheckIn.PreparednessOptions, Model.CheckIn?.Preparedness)
+            };
+        }
+
+        @foreach (var question in questions)
+        {
+            <fieldset class="mb-4">
+                <legend class="analytics-question">@question.Label</legend>
+                <div class="analytics-pill-group">
+                    @foreach (var option in question.Options)
+                    {
+                        <label class="analytics-pill">
+                            <input type="radio" name="@question.Name" value="@option" required @(option == question.Selected ? "checked" : "") />
+                            <span>@option</span>
+                        </label>
+                    }
+                </div>
+            </fieldset>
+        }
+
+        <label class="analytics-question d-block" for="checkInFeedback">Anything you'd change next week? (optional)</label>
+        <textarea class="form-control mb-4" id="checkInFeedback" name="feedback" rows="2" maxlength="1000"
+                  placeholder="e.g. fewer back-to-back sessions on Wednesdays">@Model.CheckIn?.Feedback</textarea>
+
+        <button type="submit" class="btn btn-primary">@(Model.CheckIn == null ? "Save my week" : "Update my week")</button>
+    </form>
+</div>
+
+@section Scripts {
+    <script>
+        // Loads the AI summary after the page itself has rendered, so the
+        // rest of the page never waits on the AI. The server reuses a saved
+        // summary when nothing has changed, so this is usually instant.
+        (function () {
+            var container = document.getElementById('weeklySummary');
+            var status = document.getElementById('weeklySummaryStatus');
+            if (!container || !status) {
+                return;
+            }
+
+            function showMessage(text) {
+                status.textContent = text;
+            }
+
+            fetch(container.dataset.summaryUrl, { headers: { 'Accept': 'application/json' } })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function (data) {
+                    if (!data.observations || !data.suggestion) {
+                        showMessage(data.message || "The summary isn't available right now. Please try again later.");
+                        return;
+                    }
+
+                    container.innerHTML = '';
+                    var list = document.createElement('ul');
+                    list.className = 'analytics-summary-list';
+                    data.observations.forEach(function (observation) {
+                        var item = document.createElement('li');
+                        item.textContent = observation;
+                        list.appendChild(item);
+                    });
+                    container.appendChild(list);
+
+                    var suggestion = document.createElement('div');
+                    suggestion.className = 'analytics-summary-suggestion';
+                    var label = document.createElement('strong');
+                    label.textContent = 'Try next week: ';
+                    suggestion.appendChild(label);
+                    suggestion.appendChild(document.createTextNode(data.suggestion));
+                    container.appendChild(suggestion);
+                })
+                .catch(function () {
+                    showMessage("The summary couldn't be loaded. Refresh the page to try again.");
+                });
+        })();
+    </script>
+}

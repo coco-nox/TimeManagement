@@ -5,23 +5,7 @@
     ViewData["Title"] = "Tutor";
 }
 
-<h1 class="h3 mb-1">Tutor</h1>
-<p class="text-muted">Ask questions about your course material, track a report's progress, or test yourself with a generated quiz.</p>
-
-<ul class="nav nav-tabs mb-3">
-    <li class="nav-item">
-        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="chat"
-           class="nav-link @(Model.ActiveTab == "chat" ? "active" : "")">Chat</a>
-    </li>
-    <li class="nav-item">
-        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="quiz"
-           class="nav-link @(Model.ActiveTab == "quiz" ? "active" : "")">Quiz</a>
-    </li>
-    <li class="nav-item">
-        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.SelectedCourseId" asp-route-tab="report"
-           class="nav-link @(Model.ActiveTab == "report" ? "active" : "")">Report</a>
-    </li>
-</ul>
+<partial name="_TutorTabs" model="new TimeManagement.Pages.Tutor.TutorTabsView(Model.ActiveTab, Model.SelectedCourseId)" />
 
 <div class="row g-3">
     <div class="col-lg-3">

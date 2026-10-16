@@ -1,35 +1,30 @@
-using System.Net;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace TimeManagement.Services;
 
 /// <summary>
 /// Generates multiple-choice quiz questions from a course's uploaded document
-/// text. Reuses the same AI provider config as
-/// <see cref="DocumentCategorizationService"/> and <see cref="TutorChatService"/>
-/// (same appsettings.json "Gemini" section, same HTTP endpoint) rather than a
-/// third AI integration. Questions are generated on demand and never stored -
-/// only a student's answers (QuizAttempt rows) are persisted.
+/// text. Sent through <see cref="AiClient"/> as
+/// <see cref="AiTask.QuizGeneration"/> - see the appsettings.json "AiRouting"
+/// section for which provider handles it. Questions are generated on demand
+/// and never stored - only a student's answers (QuizAttempt rows) are persisted.
 /// </summary>
 public sealed partial class QuizGenerationService(
-    HttpClient httpClient,
-    IOptions<DocumentCategorizationOptions> options,
+    AiClient aiClient,
     ILogger<QuizGenerationService> logger)
 {
-    private readonly HttpClient _httpClient = httpClient;
+    private readonly AiClient _aiClient = aiClient;
     private readonly ILogger<QuizGenerationService> _logger = logger;
-    private readonly DocumentCategorizationOptions _options = options.Value;
 
     // Same budget reasoning as TutorChatService.BuildContext.
     private const int TotalContextCharBudget = 12_000;
     private const int PerDocumentCharBudget = 4_000;
 
     private const int QuestionsPerBatch = 5;
+    private const int OptionsPerQuestion = 4;
 
     [GeneratedRegex("^```(json|JSON)?\\s*|\\s*```$", RegexOptions.Singleline)]
     private static partial Regex JsonFenceRemover();
@@ -37,17 +32,17 @@ public sealed partial class QuizGenerationService(
     /// <summary>
     /// Main entry point, called each time the Quiz tab needs a fresh batch of
     /// questions. Builds a prompt from the assessment's document text and
-    /// asks Gemini for structured JSON.
+    /// asks the AI for structured JSON.
     /// </summary>
     public async Task<QuizGenerationResult> GenerateAsync(
         IReadOnlyList<TutorSourceDocument> documents,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(_options.ApiKey))
+        if (!_aiClient.IsConfigured)
         {
             return new QuizGenerationResult(
                 [],
-                "The AI tutor isn't configured yet - ask an administrator to set the DocumentCategorization API key in appsettings.json.");
+                "The AI tutor isn't configured yet - ask an administrator to add a Gemini or Groq API key.");
         }
 
         var usableDocuments = documents.Where(d => !string.IsNullOrWhiteSpace(d.ExtractedText)).ToList();
@@ -59,89 +54,29 @@ public sealed partial class QuizGenerationService(
         }
 
         var context = BuildContext(usableDocuments);
-        var prompt = BuildPrompt(context);
 
-        var payload = new
-        {
-            systemInstruction = new
-            {
-                parts = new[]
-                {
-                    new
-                    {
-                        text = "You are a course tutor writing a multiple-choice quiz. Using ONLY the supplied " +
-                               "document excerpts, write exactly " + QuestionsPerBatch + " questions that test " +
-                               "understanding of the material - never invent facts not in the excerpts. Each " +
-                               "question needs exactly 4 answer options with exactly one correct answer, plus a " +
-                               "short topic label (2-4 words) categorising what the question is about, so related " +
-                               "questions share the same topic text. Return only valid JSON: an array of objects " +
-                               "with keys \"question\" (string), \"options\" (array of exactly 4 strings), " +
-                               "\"correctAnswer\" (string, must exactly match one of the options), and \"topic\" (string)."
-                    }
-                }
-            },
-            contents = new[]
-            {
-                new { role = "user", parts = new[] { new { text = prompt } } }
-            },
-            generationConfig = new { temperature = 0.4 }
-        };
+        var request = new AiRequest(
+            SystemInstruction:
+                "You are a course tutor writing a multiple-choice quiz. Using ONLY the supplied " +
+                "document excerpts, write exactly " + QuestionsPerBatch + " questions that test " +
+                "understanding of the material - never invent facts not in the excerpts. Each " +
+                "question needs exactly " + OptionsPerQuestion + " different answer options with exactly " +
+                "one correct answer, plus a short topic label (2-4 words) categorising what the question " +
+                "is about, so related questions share the same topic text. Return only valid JSON: an " +
+                "object with one key \"questions\", an array of objects with keys \"question\" (string), " +
+                "\"options\" (array of exactly " + OptionsPerQuestion + " strings), \"correctAnswer\" " +
+                "(string, must exactly match one of the options), and \"topic\" (string).",
+            Prompt: BuildPrompt(context),
+            Temperature: 0.4,
+            JsonOutput: true);
 
-        _httpClient.DefaultRequestHeaders.Remove("x-goog-api-key");
-        _httpClient.DefaultRequestHeaders.Add("x-goog-api-key", _options.ApiKey);
+        // ParseResponse rejecting the reply (not valid JSON, or no valid
+        // questions in it) makes AiClient retry on the other provider.
+        var result = await _aiClient.AskAsync(AiTask.QuizGeneration, request, ParseResponse, cancellationToken);
 
-        var requestUri = $"{_options.Endpoint}/{_options.Model}:generateContent";
-        using var response = await _httpClient.PostAsJsonAsync(requestUri, payload, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            if (response.StatusCode == HttpStatusCode.TooManyRequests)
-            {
-                var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-                // Same daily-vs-transient distinction as TutorChatService.AskAsync.
-                if (errorBody.Contains("PerDay", StringComparison.OrdinalIgnoreCase))
-                {
-                    return new QuizGenerationResult(
-                        [],
-                        "The AI tutor has reached its daily question limit. It resets at midnight " +
-                        "Pacific Time - please try again after that.");
-                }
-
-                return new QuizGenerationResult([], "The AI tutor is being rate-limited right now. Please wait a moment and try again.");
-            }
-
-            // Logged (not shown to the student) so the real cause - a bad
-            // model name, quota issue, or Gemini itself being overloaded -
-            // is visible in the server console instead of only ever showing
-            // as a generic HTTP status in the UI.
-            var failureBody = await response.Content.ReadAsStringAsync(cancellationToken);
-            _logger.LogWarning(
-                "Quiz generation request to Gemini failed with HTTP {StatusCode}. Response body: {Body}",
-                (int)response.StatusCode, failureBody);
-
-            return new QuizGenerationResult([], $"The quiz request failed (HTTP {(int)response.StatusCode}). Please try again.");
-        }
-
-        var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
-        var json = JsonDocument.Parse(responseJson);
-        var root = json.RootElement;
-
-        if (root.TryGetProperty("candidates", out var candidates) && candidates.ValueKind == JsonValueKind.Array && candidates.GetArrayLength() > 0)
-        {
-            var parts = candidates[0].GetProperty("content").GetProperty("parts");
-            var assistantText = parts.GetArrayLength() > 0 ? parts[0].GetProperty("text").GetString() : null;
-
-            if (!string.IsNullOrWhiteSpace(assistantText))
-            {
-                var questions = ParseResponse(assistantText);
-                if (questions is { Count: > 0 })
-                {
-                    return new QuizGenerationResult(questions, null);
-                }
-            }
-        }
-
-        return new QuizGenerationResult([], "The AI tutor didn't return a usable quiz. Please try again.");
+        return result.Value is { } questions
+            ? new QuizGenerationResult(questions, null)
+            : new QuizGenerationResult([], AiClient.DescribeFailure(result, "AI tutor", "quiz", "quiz"));
     }
 
     // Same excerpt-concatenation approach as TutorChatService.BuildContext,
@@ -179,10 +114,17 @@ public sealed partial class QuizGenerationService(
         return "Course document excerpts:\n\n" + context;
     }
 
-    // Parses the model's reply as a JSON array of question objects. Returns
-    // null (not a thrown exception) for anything that doesn't fit, so
-    // GenerateAsync can fall back to its "didn't return a usable quiz" message.
-    private static List<QuizQuestion>? ParseResponse(string aiResponse)
+    /// <summary>
+    /// Validates the model's reply before any of it reaches the student. It
+    /// must be JSON - either { "questions": [...] } (what the prompt asks for)
+    /// or a bare array - and each question is only kept if it has question
+    /// text, a topic, exactly <see cref="OptionsPerQuestion"/> distinct
+    /// options, and a correctAnswer that matches one of them (normalised to
+    /// that option's exact text, so the Quiz tab's answer check can't miss on
+    /// spacing or case). Returns null when nothing valid is left, which
+    /// AiClient treats as an unusable reply.
+    /// </summary>
+    private List<QuizQuestion>? ParseResponse(string aiResponse)
     {
         var text = aiResponse.Trim();
         if (text.StartsWith("```", StringComparison.Ordinal))
@@ -194,52 +136,87 @@ public sealed partial class QuizGenerationService(
         {
             using var json = JsonDocument.Parse(text);
             var root = json.RootElement;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("questions", out var questionsEl))
+            {
+                root = questionsEl;
+            }
+
             if (root.ValueKind != JsonValueKind.Array)
             {
+                _logger.LogWarning("Quiz reply was JSON but had no questions array.");
                 return null;
             }
 
             var questions = new List<QuizQuestion>();
+            var rejected = 0;
             foreach (var element in root.EnumerateArray())
             {
-                if (!element.TryGetProperty("question", out var questionEl) ||
-                    !element.TryGetProperty("options", out var optionsEl) ||
-                    !element.TryGetProperty("correctAnswer", out var correctEl) ||
-                    !element.TryGetProperty("topic", out var topicEl))
+                var question = TryReadQuestion(element);
+                if (question == null)
                 {
+                    rejected++;
                     continue;
                 }
 
-                var question = questionEl.GetString();
-                var correctAnswer = correctEl.GetString();
-                var topic = topicEl.GetString();
+                questions.Add(question);
+            }
 
-                if (string.IsNullOrWhiteSpace(question) || string.IsNullOrWhiteSpace(correctAnswer) ||
-                    string.IsNullOrWhiteSpace(topic) || optionsEl.ValueKind != JsonValueKind.Array)
-                {
-                    continue;
-                }
-
-                var options = optionsEl.EnumerateArray()
-                    .Select(o => o.GetString())
-                    .Where(o => !string.IsNullOrWhiteSpace(o))
-                    .Select(o => o!.Trim())
-                    .ToList();
-
-                if (options.Count < 2)
-                {
-                    continue;
-                }
-
-                questions.Add(new QuizQuestion(question.Trim(), options, correctAnswer.Trim(), topic.Trim()));
+            if (rejected > 0)
+            {
+                _logger.LogWarning(
+                    "Quiz reply had {Rejected} invalid question(s) that were dropped; {Kept} kept.",
+                    rejected, questions.Count);
             }
 
             return questions.Count > 0 ? questions : null;
         }
-        catch (JsonException)
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Quiz reply was not valid JSON.");
+            return null;
+        }
+    }
+
+    private static QuizQuestion? TryReadQuestion(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty("question", out var questionEl) || questionEl.ValueKind != JsonValueKind.String ||
+            !element.TryGetProperty("options", out var optionsEl) || optionsEl.ValueKind != JsonValueKind.Array ||
+            !element.TryGetProperty("correctAnswer", out var correctEl) || correctEl.ValueKind != JsonValueKind.String ||
+            !element.TryGetProperty("topic", out var topicEl) || topicEl.ValueKind != JsonValueKind.String)
         {
             return null;
         }
+
+        var question = questionEl.GetString()?.Trim();
+        var correctAnswer = correctEl.GetString()?.Trim();
+        var topic = topicEl.GetString()?.Trim();
+
+        if (string.IsNullOrEmpty(question) || string.IsNullOrEmpty(correctAnswer) || string.IsNullOrEmpty(topic))
+        {
+            return null;
+        }
+
+        var options = optionsEl.EnumerateArray()
+            .Where(o => o.ValueKind == JsonValueKind.String)
+            .Select(o => o.GetString()?.Trim())
+            .Where(o => !string.IsNullOrEmpty(o))
+            .Select(o => o!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (options.Count != OptionsPerQuestion)
+        {
+            return null;
+        }
+
+        var matchingOption = options.FirstOrDefault(o => string.Equals(o, correctAnswer, StringComparison.OrdinalIgnoreCase));
+        if (matchingOption == null)
+        {
+            return null;
+        }
+
+        return new QuizQuestion(question, options, matchingOption, topic);
     }
 }
 

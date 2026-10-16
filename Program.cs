@@ -70,21 +70,32 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 // ---------------------------------------------------------------------
-// AI provider: Gemini config (key/endpoint/model) plus the typed
-// HttpClients that call it - one per AI feature (document categorisation,
-// Tutor chat, quiz generation, calendar scheduling, report checklists).
+// AI providers: Gemini and Groq config (key/endpoint/model), the
+// "AiRouting" task -> provider mapping, and AiClient - the one typed
+// HttpClient every AI feature goes through (see AiClient for the
+// fallback-to-the-other-provider behaviour). Keys come from User Secrets
+// (Gemini:ApiKey / Groq:ApiKey), never appsettings.json.
 // ---------------------------------------------------------------------
-builder.Services.Configure<DocumentCategorizationOptions>(builder.Configuration.GetSection("Gemini"));
-builder.Services.AddHttpClient<DocumentCategorizationService>();
+builder.Services.Configure<AiProviderOptions>(nameof(AiProvider.Gemini), builder.Configuration.GetSection("Gemini"));
+builder.Services.Configure<AiProviderOptions>(nameof(AiProvider.Groq), builder.Configuration.GetSection("Groq"));
+builder.Services.Configure<AiRoutingOptions>(builder.Configuration.GetSection("AiRouting"));
+builder.Services.AddHttpClient<AiClient>();
 
-// TutorChatService, QuizGenerationService, CalendarSchedulingService, and
-// ReportChecklistGenerationService reuse the same
-// DocumentCategorizationOptions/endpoint above - each is another typed
-// client for the same AI provider, not a separate integration.
-builder.Services.AddHttpClient<TutorChatService>();
-builder.Services.AddHttpClient<QuizGenerationService>();
-builder.Services.AddHttpClient<CalendarSchedulingService>();
-builder.Services.AddHttpClient<ReportChecklistGenerationService>();
+// One service per AI feature (document categorisation, Tutor chat, quiz
+// generation, calendar scheduling, report checklists, the Analytics weekly
+// summary) - each builds its
+// prompt and parses the reply, and leaves the HTTP side to AiClient.
+builder.Services.AddScoped<DocumentCategorizationService>();
+builder.Services.AddScoped<TutorChatService>();
+builder.Services.AddScoped<QuizGenerationService>();
+builder.Services.AddScoped<CalendarSchedulingService>();
+builder.Services.AddScoped<ReportChecklistGenerationService>();
+builder.Services.AddScoped<WeeklySummaryService>();
+builder.Services.AddScoped<StudyGuideService>();
+
+// Timed study sessions (the timer bar, "Still studying?", Analytics' time
+// actually studied) - see StudySessionService for how time is counted.
+builder.Services.AddScoped<StudySessionService>();
 
 // ---------------------------------------------------------------------
 // Email: Gmail SMTP via MailKit, for password reset links. Address/AppPassword
@@ -94,6 +105,20 @@ builder.Services.AddHttpClient<ReportChecklistGenerationService>();
 // ---------------------------------------------------------------------
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.AddTransient<EmailSender>();
+
+// Study-session reminders: the rules (shared by the in-app reminder card,
+// email and Telegram), the once-a-minute job that sends them by email
+// (same Gmail account) and Telegram while the app is running, and the
+// Telegram bot that long-polls for button taps (+15 min, Cancel, ...).
+// The bot token lives in User Secrets (Telegram:BotToken). Its URLs carry
+// the token, so the client's HTTP request logging is removed - otherwise
+// the default logging prints the token to the console.
+builder.Services.AddScoped<SessionReminderService>();
+builder.Services.Configure<TelegramOptions>(builder.Configuration.GetSection("Telegram"));
+builder.Services.AddHttpClient<ITelegramClient, TelegramClient>().RemoveAllLoggers();
+builder.Services.AddScoped<TelegramUpdateHandler>();
+builder.Services.AddHostedService<SessionReminderNotificationService>();
+builder.Services.AddHostedService<TelegramBotService>();
 
 // ---------------------------------------------------------------------
 // Razor Pages: page routing plus the folder-level sign-in requirement.

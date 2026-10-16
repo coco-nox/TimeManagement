@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using TimeManagement.Models;
+using TimeManagement.Services;
 
 namespace TimeManagement.Pages;
 
@@ -11,10 +12,37 @@ namespace TimeManagement.Pages;
 /// account's full name and email address. Password changes stay on the
 /// existing ChangePassword page rather than being duplicated here.
 /// </summary>
-public class AccountDetailsModel(UserManager<ApplicationUser> userManager, SignInManager<ApplicationUser> signInManager) : PageModel
+public class AccountDetailsModel(
+    UserManager<ApplicationUser> userManager,
+    SignInManager<ApplicationUser> signInManager,
+    EmailSender emailSender,
+    ITelegramClient telegram,
+    IConfiguration configuration) : PageModel
 {
     private readonly UserManager<ApplicationUser> _userManager = userManager;
     private readonly SignInManager<ApplicationUser> _signInManager = signInManager;
+    private readonly EmailSender _emailSender = emailSender;
+    private readonly ITelegramClient _telegram = telegram;
+    private readonly IConfiguration _configuration = configuration;
+
+    private static readonly TimeSpan TelegramLinkLifetime = TimeSpan.FromMinutes(15);
+
+    // Telegram card state.
+    public bool TelegramConfigured { get; set; }
+
+    /// <summary>The bot's @username; null when the token is set but wrong.</summary>
+    public string? TelegramBotUsername { get; set; }
+
+    public bool TelegramConnected { get; set; }
+
+    public string? TelegramUsername { get; set; }
+
+    public bool TelegramRemindersEnabled { get; set; }
+
+    /// <summary>The t.me link with a live one-time code, after Connect was clicked.</summary>
+    public string? TelegramConnectLink { get; set; }
+
+    public string? TelegramConnectCode { get; set; }
 
     [BindProperty]
     public InputModel Input { get; set; } = new();
@@ -22,6 +50,14 @@ public class AccountDetailsModel(UserManager<ApplicationUser> userManager, SignI
     /// <summary>Shown once after a successful save.</summary>
     [TempData]
     public string? StatusMessage { get; set; }
+
+    [TempData]
+    public string? ErrorMessage { get; set; }
+
+    // Session reminder settings, shown in their own card.
+    public bool EmailRemindersEnabled { get; set; }
+
+    public int ReminderLeadMinutes { get; set; }
 
     public class InputModel
     {
@@ -47,8 +83,170 @@ public class AccountDetailsModel(UserManager<ApplicationUser> userManager, SignI
 
         Input.FullName = user.FullName;
         Input.Email = user.Email ?? string.Empty;
+        LoadReminderSettings(user);
+        await LoadTelegramAsync(user);
 
         return Page();
+    }
+
+    /// <summary>Makes a one-time code and shows the t.me link that carries
+    /// it; the bot links whichever chat presses Start with it.</summary>
+    public async Task<IActionResult> OnPostConnectTelegramAsync()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return NotFound("Could not load your account.");
+        }
+
+        if (await _telegram.GetBotUsernameAsync() == null)
+        {
+            ErrorMessage = "FlightPath can't reach your Telegram bot - check the bot token in User Secrets.";
+            return RedirectToPage(null, null, null, "telegram");
+        }
+
+        user.TelegramLinkCode = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+        user.TelegramLinkCodeExpiresUtc = DateTime.UtcNow.Add(TelegramLinkLifetime);
+        await _userManager.UpdateAsync(user);
+        return RedirectToPage(null, null, null, "telegram");
+    }
+
+    public async Task<IActionResult> OnPostUpdateTelegramAsync([FromForm] bool telegramReminders)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return NotFound("Could not load your account.");
+        }
+
+        user.TelegramRemindersEnabled = telegramReminders && user.TelegramChatId != null;
+        await _userManager.UpdateAsync(user);
+        StatusMessage = user.TelegramRemindersEnabled ? "Telegram reminders are on." : "Telegram reminders are paused.";
+        return RedirectToPage(null, null, null, "telegram");
+    }
+
+    public async Task<IActionResult> OnPostDisconnectTelegramAsync()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return NotFound("Could not load your account.");
+        }
+
+        if (user.TelegramChatId is long chatId)
+        {
+            await _telegram.SendMessageAsync(chatId, "Disconnected from FlightPath. You won't get reminders here any more.", null);
+        }
+
+        user.TelegramChatId = null;
+        user.TelegramUsername = null;
+        user.TelegramRemindersEnabled = false;
+        user.TelegramLinkCode = null;
+        user.TelegramLinkCodeExpiresUtc = null;
+        await _userManager.UpdateAsync(user);
+        StatusMessage = "Telegram disconnected.";
+        return RedirectToPage(null, null, null, "telegram");
+    }
+
+    public async Task<IActionResult> OnPostSendTestTelegramAsync()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user?.TelegramChatId is not long chatId)
+        {
+            ErrorMessage = "Connect Telegram first.";
+            return RedirectToPage(null, null, null, "telegram");
+        }
+
+        var sent = await _telegram.SendMessageAsync(chatId,
+            $"🔔 <b>Test reminder</b>\n\nThis is how FlightPath reminders arrive - {user.ReminderLeadMinutes} minutes before each " +
+            "study session, with <b>+15 min</b>, <b>+30 min</b>, <b>Cancel session</b> and <b>Got it</b> buttons.", null);
+
+        if (sent != null)
+        {
+            StatusMessage = "Test message sent - check Telegram on your phone.";
+        }
+        else
+        {
+            ErrorMessage = "The test message couldn't be sent. Check the bot token, and that you haven't blocked the bot in Telegram.";
+        }
+        return RedirectToPage(null, null, null, "telegram");
+    }
+
+    private async Task LoadTelegramAsync(ApplicationUser user)
+    {
+        TelegramConfigured = _telegram.IsConfigured;
+        TelegramBotUsername = TelegramConfigured ? await _telegram.GetBotUsernameAsync() : null;
+        TelegramConnected = user.TelegramChatId != null;
+        TelegramUsername = user.TelegramUsername;
+        TelegramRemindersEnabled = user.TelegramRemindersEnabled;
+
+        if (!TelegramConnected && TelegramBotUsername != null &&
+            user.TelegramLinkCode != null && user.TelegramLinkCodeExpiresUtc > DateTime.UtcNow)
+        {
+            TelegramConnectCode = user.TelegramLinkCode;
+            TelegramConnectLink = $"https://t.me/{TelegramBotUsername}?start={user.TelegramLinkCode}";
+        }
+    }
+
+    public async Task<IActionResult> OnPostUpdateRemindersAsync([FromForm] bool emailReminders, [FromForm] int leadMinutes)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null)
+        {
+            return NotFound("Could not load your account.");
+        }
+
+        if (!ApplicationUser.ReminderLeadOptions.Contains(leadMinutes))
+        {
+            ErrorMessage = "Pick how early you'd like reminders.";
+            return RedirectToPage(null, null, null, "reminders");
+        }
+
+        user.EmailRemindersEnabled = emailReminders;
+        user.ReminderLeadMinutes = leadMinutes;
+        await _userManager.UpdateAsync(user);
+
+        StatusMessage = "Your reminder settings have been saved.";
+        return RedirectToPage(null, null, null, "reminders");
+    }
+
+    /// <summary>Sends a sample reminder email right now, so the student can
+    /// check it arrives (and notifies on their phone) without waiting for a
+    /// real session.</summary>
+    public async Task<IActionResult> OnPostSendTestReminderAsync()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null || string.IsNullOrWhiteSpace(user.Email))
+        {
+            return NotFound("Could not load your account.");
+        }
+
+        var start = DateTime.Now.AddMinutes(user.ReminderLeadMinutes);
+        var sample = new SessionReminderEmail(
+            "Test reminder - your sessions will look like this",
+            null,
+            FolderColours.DefaultHex,
+            $"Today, {start:h:mm} – {start.AddMinutes(60):h:mm tt} · 60 minutes",
+            null,
+            user.ReminderLeadMinutes,
+            _configuration["Reminders:AppBaseUrl"] ?? "http://localhost:5243");
+
+        if (await _emailSender.SendSessionReminderAsync(user.Email, sample))
+        {
+            StatusMessage = $"Test reminder sent to {user.Email} - check your inbox (and your phone).";
+        }
+        else
+        {
+            ErrorMessage = "The test reminder couldn't be sent. Check that the Gmail address and app password are set up in User Secrets.";
+        }
+
+        return RedirectToPage(null, null, null, "reminders");
+    }
+
+    private void LoadReminderSettings(ApplicationUser user)
+    {
+        EmailRemindersEnabled = user.EmailRemindersEnabled;
+        ReminderLeadMinutes = user.ReminderLeadMinutes;
     }
 
     public async Task<IActionResult> OnPostUpdateFullNameAsync()
@@ -164,6 +362,11 @@ public class AccountDetailsModel(UserManager<ApplicationUser> userManager, SignI
     {
         var user = await _userManager.GetUserAsync(User);
         Input.Email = user?.Email ?? string.Empty;
+        if (user != null)
+        {
+            LoadReminderSettings(user);
+            await LoadTelegramAsync(user);
+        }
         return Page();
     }
 
@@ -171,6 +374,11 @@ public class AccountDetailsModel(UserManager<ApplicationUser> userManager, SignI
     {
         var user = await _userManager.GetUserAsync(User);
         Input.FullName = user?.FullName ?? string.Empty;
+        if (user != null)
+        {
+            LoadReminderSettings(user);
+            await LoadTelegramAsync(user);
+        }
         return Page();
     }
 }

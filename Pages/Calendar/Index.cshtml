@@ -57,14 +57,19 @@
                 <button type="button" class="mode-btn" data-mode="Blocked">Blocked</button>
             </div>
 
+            <form method="post" asp-page-handler="CopyPreviousWeek" asp-route-weekOffset="@Model.WeekOffset"
+                  onsubmit="@(Model.AvailableHours + Model.BlockedHours > 0 ? "return confirm('Replace this week\\'s painted hours with last week\\'s? Scheduled study sessions are kept.');" : "")">
+                <button type="submit" class="btn btn-outline-secondary btn-sm" title="Copy last week's Available/Blocked hours onto this week">&#8634; Copy last week</button>
+            </form>
+
             <form method="post" asp-page-handler="GenerateSchedule" asp-route-weekOffset="@Model.WeekOffset"
-                  onsubmit="return confirm('Generate a study schedule for this week? This replaces any AI-generated sessions already on this week\'s calendar.');">
+                  onsubmit="return confirm('Generate a study schedule for this week? This replaces any AI-generated sessions already on this week\'s calendar (sessions you\'ve logged as done or missed are kept).');">
                 <button type="submit" class="btn btn-primary btn-sm">&#10024; Generate schedule</button>
             </form>
         </div>
     </div>
 
-    <p class="text-muted small mb-2">Builds a plan from your available hours, your Preferences-tab settings, and your upcoming Report/Quiz/Test due dates - replaces this week's current plan rather than adding to it, so it stays in sync with anything you've since blocked off.</p>
+    <p class="text-muted small mb-2">Builds a plan from your available hours, your Preferences-tab settings, and your upcoming Report/Quiz/Test due dates - replaces this week's current plan rather than adding to it, so it stays in sync with anything you've since blocked off. Sessions you've already logged as done or missed are kept. <a asp-page="/Analytics/Index" asp-route-weekOffset="@Model.WeekOffset" asp-fragment="sessions">Log how your sessions went &rarr;</a></p>
 
     <div class="calendar-legend">
         <span><span class="legend-swatch available"></span>Available</span>

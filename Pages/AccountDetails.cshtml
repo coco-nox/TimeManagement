@@ -11,6 +11,10 @@
 {
     <div class="alert alert-success" role="alert">@Model.StatusMessage</div>
 }
+@if (Model.ErrorMessage != null)
+{
+    <div class="alert alert-danger" role="alert">@Model.ErrorMessage</div>
+}
 
 <div asp-validation-summary="ModelOnly" class="text-danger mb-3" role="alert"></div>
 
@@ -40,6 +44,93 @@
             </div>
             <button type="submit" class="btn btn-outline-secondary">Save</button>
         </form>
+    </div>
+</div>
+
+<div class="card mb-3" id="reminders">
+    <div class="card-body p-4">
+        <h2 class="h6 text-uppercase text-muted mb-1">Session reminders</h2>
+        <p class="text-muted small mb-3">Before each study session on your Calendar, a reminder pops up in FlightPath so you can start, push it back, or cancel it. You can get the reminder by email too &mdash; with notifications on in your phone's mail app, it reaches your phone as well.</p>
+
+        <form method="post" asp-page-handler="UpdateReminders">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="emailReminders" name="emailReminders" value="true" @(Model.EmailRemindersEnabled ? "checked" : "") />
+                <label class="form-check-label" for="emailReminders">Also email me reminders at <strong>@Model.Input.Email</strong></label>
+            </div>
+
+            <fieldset class="mb-3">
+                <legend class="analytics-question">Remind me</legend>
+                <div class="analytics-pill-group">
+                    @foreach (var minutes in TimeManagement.Models.ApplicationUser.ReminderLeadOptions)
+                    {
+                        <label class="analytics-pill">
+                            <input type="radio" name="leadMinutes" value="@minutes" @(minutes == Model.ReminderLeadMinutes ? "checked" : "") />
+                            <span>@minutes minutes before</span>
+                        </label>
+                    }
+                </div>
+            </fieldset>
+
+            <p class="small text-muted mb-3">Reminders are only sent while FlightPath is running on your computer.</p>
+
+            <div class="d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-outline-secondary">Save</button>
+                <button type="submit" formaction="@Url.Page("/AccountDetails", "SendTestReminder")" class="btn btn-link">Send me a test reminder email</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-3" id="telegram">
+    <div class="card-body p-4">
+        <h2 class="h6 text-uppercase text-muted mb-1">Telegram reminders</h2>
+        <p class="text-muted small mb-3">Get each reminder as a Telegram message on your phone, with buttons to push the session back or cancel it (with a reason) &mdash; FlightPath updates straight away. Free.</p>
+
+        @if (!Model.TelegramConfigured)
+        {
+            <div class="small">
+                <p class="fw-semibold mb-2">One-time setup &mdash; create your FlightPath bot (about 2 minutes):</p>
+                <ol class="mb-3 ps-3">
+                    <li class="mb-1">In Telegram, open a chat with <strong>@@BotFather</strong> and send <code>/newbot</code>.</li>
+                    <li class="mb-1">Give it a name (e.g. <em>FlightPath</em>) and a username ending in <code>bot</code> (e.g. <em>myflightpath_bot</em>).</li>
+                    <li class="mb-1">BotFather replies with a <strong>token</strong>. Keep it private &mdash; it controls the bot.</li>
+                    <li class="mb-1">In a terminal in the FlightPath project folder, run:<br /><code>dotnet user-secrets set "Telegram:BotToken" "paste-the-token-here"</code></li>
+                    <li>Come back to this page (refresh in a minute) and click <strong>Connect Telegram</strong>.</li>
+                </ol>
+            </div>
+        }
+        else if (Model.TelegramBotUsername == null)
+        {
+            <div class="alert alert-warning py-2 small mb-0">A bot token is set, but Telegram didn't accept it. Check it with BotFather (<code>/mybots</code> &rsaquo; API Token) and set it again with <code>dotnet user-secrets set "Telegram:BotToken" "..."</code>.</div>
+        }
+        else if (Model.TelegramConnected)
+        {
+            <p class="mb-3">Connected to <strong>@(Model.TelegramUsername != null ? "@" + Model.TelegramUsername : "your Telegram chat")</strong> via <strong>@@@Model.TelegramBotUsername</strong>.</p>
+            <form method="post" asp-page-handler="UpdateTelegram" class="mb-3">
+                <div class="form-check form-switch mb-2">
+                    <input class="form-check-input" type="checkbox" role="switch" id="telegramReminders" name="telegramReminders" value="true" @(Model.TelegramRemindersEnabled ? "checked" : "") onchange="this.form.submit()" />
+                    <label class="form-check-label" for="telegramReminders">Send my reminders to Telegram</label>
+                </div>
+                <noscript><button type="submit" class="btn btn-sm btn-outline-secondary">Save</button></noscript>
+            </form>
+            <div class="d-flex flex-wrap gap-2">
+                <form method="post" asp-page-handler="SendTestTelegram"><button type="submit" class="btn btn-outline-secondary">Send a test message</button></form>
+                <form method="post" asp-page-handler="DisconnectTelegram" onsubmit="return confirm('Disconnect Telegram? Reminders will stop going to that chat.');"><button type="submit" class="btn btn-link text-danger">Disconnect</button></form>
+            </div>
+        }
+        else if (Model.TelegramConnectLink != null)
+        {
+            <p class="mb-2">Open this link <strong>on your phone</strong> (or anywhere you use Telegram) and tap <strong>Start</strong>:</p>
+            <p class="mb-2"><a href="@Model.TelegramConnectLink" target="_blank" rel="noopener" class="btn btn-primary">Open @@@Model.TelegramBotUsername in Telegram</a></p>
+            <p class="small text-muted mb-2">Or search for <strong>@@@Model.TelegramBotUsername</strong> in Telegram and send: <code>/start @Model.TelegramConnectCode</code></p>
+            <p class="small text-muted mb-0">The link works once and expires in 15 minutes. After tapping Start, <a asp-page="/AccountDetails" asp-fragment="telegram">refresh this page</a>.</p>
+        }
+        else
+        {
+            <form method="post" asp-page-handler="ConnectTelegram">
+                <button type="submit" class="btn btn-primary">Connect Telegram</button>
+            </form>
+        }
     </div>
 </div>
 

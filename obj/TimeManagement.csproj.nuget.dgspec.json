@@ -57,15 +57,19 @@
               "target": "Package",
               "version": "[3.5.1, )"
             },
+            "HtmlSanitizer": {
+              "target": "Package",
+              "version": "[9.2.1039, )"
+            },
+            "HtmlToOpenXml.dll": {
+              "target": "Package",
+              "version": "[3.5.0, )"
+            },
             "MailKit": {
               "target": "Package",
               "version": "[4.17.0, )"
             },
             "Microsoft.AspNetCore.Identity.EntityFrameworkCore": {
-              "target": "Package",
-              "version": "[10.0.*, )"
-            },
-            "Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation": {
               "target": "Package",
               "version": "[10.0.*, )"
             },

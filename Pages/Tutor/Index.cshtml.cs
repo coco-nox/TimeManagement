@@ -21,13 +21,18 @@ public class IndexModel(
     UserManager<ApplicationUser> userManager,
     TutorChatService tutorChatService,
     QuizGenerationService quizGenerationService,
-    ReportChecklistGenerationService reportChecklistService) : PageModel
+    ReportChecklistGenerationService reportChecklistService,
+    StudySessionService studySessions) : PageModel
 {
     private readonly ApplicationDbContext _db = db;
     private readonly UserManager<ApplicationUser> _userManager = userManager;
     private readonly TutorChatService _tutorChatService = tutorChatService;
     private readonly QuizGenerationService _quizGenerationService = quizGenerationService;
     private readonly ReportChecklistGenerationService _reportChecklistService = reportChecklistService;
+
+    // Counts Tutor questions, quiz answers and checklist ticks towards the
+    // running study session's "What you got done" (no session, no-op).
+    private readonly StudySessionService _studySessions = studySessions;
 
     private static readonly string[] KnownTabs = ["chat", "report", "quiz"];
 
@@ -449,6 +454,7 @@ public class IndexModel(
         };
         _db.ChatMessages.Add(assistantMessage);
         await _db.SaveChangesAsync();
+        await _studySessions.RecordAsync(user.Id, s => s.TutorQuestions++);
 
         return new JsonResult(new
         {
@@ -542,6 +548,7 @@ public class IndexModel(
 
         item.IsCompleted = !item.IsCompleted;
         await _db.SaveChangesAsync();
+        await _studySessions.RecordAsync(user.Id, s => s.ChecklistTicked += item.IsCompleted ? 1 : -1);
 
         var sessionItems = await _db.AssessmentChecklistItems
             .Where(i => i.AssessmentId == item.AssessmentId && i.SessionId == item.SessionId && i.ArchivedUtc == null)
@@ -731,6 +738,14 @@ public class IndexModel(
             SessionId = sessionId
         });
         await _db.SaveChangesAsync();
+        await _studySessions.RecordAsync(assessment.Course!.UserId, s =>
+        {
+            s.QuizAnswered++;
+            if (isCorrect)
+            {
+                s.QuizCorrect++;
+            }
+        });
 
         var activeAttempts = await _db.QuizAttempts
             .Where(a => a.AssessmentId == assessmentId && a.ArchivedUtc == null)

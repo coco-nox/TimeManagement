@@ -1,0 +1,70 @@
+@page
+@model TimeManagement.Pages.Tutor.PrintModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@Model.Heading</title>
+    @* Self-contained print styles - this page deliberately skips the app
+       layout so the printout (or PDF) is just the document. *@
+    <style>
+        :root { color-scheme: light; }
+        body { margin: 0; background: #ece4d6; color: #1f1b17; font-family: Georgia, 'Times New Roman', serif; font-size: 12pt; line-height: 1.55; }
+        .print-bar { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; display: flex; gap: 12px; align-items: center; justify-content: center; padding: 14px; font-size: 15px; color: #3d3731; }
+        .print-bar button { min-height: 40px; padding: 0 18px; border: none; border-radius: 8px; background: #5c6f5c; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+        .sheet { max-width: 720px; margin: 0 auto 40px; background: #fff; padding: 56px 64px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12); }
+        .eyebrow { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 9pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #6b5940; }
+        h1 { font-size: 22pt; line-height: 1.2; margin: 4px 0 4px; }
+        .subtitle { font-family: 'Segoe UI', system-ui, sans-serif; color: #6b5940; font-size: 10pt; margin: 0 0 24px; }
+        h2 { font-size: 15pt; margin: 22px 0 8px; }
+        h3 { font-size: 12.5pt; margin: 16px 0 6px; }
+        .guide h2 { border-bottom: 2px solid #5c6f5c; padding-bottom: 3px; }
+        p { margin: 0 0 10px; }
+        li { margin-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 11pt; }
+        th, td { border: 1px solid #d8cdb9; padding: 6px 9px; text-align: left; vertical-align: top; }
+        th { background: #f2ede2; width: 30%; }
+        blockquote { border-left: 3px solid #cbb093; margin: 0 0 10px; padding-left: 12px; color: #4a4239; }
+        .ql-align-center { text-align: center; }
+        .ql-align-right { text-align: right; }
+        .ql-align-justify { text-align: justify; }
+        @@media print {
+            body { background: #fff; }
+            .print-bar { display: none; }
+            .sheet { box-shadow: none; padding: 0; max-width: none; margin: 0; }
+            .guide-answers { break-before: page; }
+            h2, h3 { break-after: avoid; }
+            li, tr { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="print-bar">
+        <span>Choose <strong>Save as PDF</strong> as the printer to download a PDF.</span>
+        <button type="button" onclick="window.print()">Print / Save as PDF</button>
+    </div>
+    <main class="sheet @(Model.IsStudyGuide ? "guide" : "")">
+        @if (!string.IsNullOrEmpty(Model.Eyebrow))
+        {
+            <div class="eyebrow">@Model.Eyebrow</div>
+        }
+        <h1>@Model.Heading</h1>
+        @if (!string.IsNullOrEmpty(Model.Subtitle))
+        {
+            <p class="subtitle">@Model.Subtitle</p>
+        }
+        @Html.Raw(Model.BodyHtml)
+    </main>
+    <script>
+        window.addEventListener('load', function () {
+            if (!/[?&]noprint=1/.test(location.search)) {
+                setTimeout(function () { window.print(); }, 300);
+            }
+        });
+    </script>
+</body>
+</html>

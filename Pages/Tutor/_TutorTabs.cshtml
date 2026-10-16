@@ -1,0 +1,47 @@
+@model TimeManagement.Pages.Tutor.TutorTabsView
+@using Microsoft.AspNetCore.Identity
+@using TimeManagement.Models
+@inject UserManager<ApplicationUser> UserManager
+@inject TimeManagement.Services.StudySessionService StudySessions
+@* The Tutor's tab bar, shared by Pages/Tutor/Index (Chat/Quiz/Report),
+   Write and StudyGuide - the last two are their own pages, so the bar has
+   to be one partial for the tabs to look and behave the same everywhere. *@
+@{
+    var tutorUser = await UserManager.GetUserAsync(User);
+    var hasRunningSession = tutorUser != null && await StudySessions.GetActiveAsync(tutorUser.Id, DateTime.UtcNow) != null;
+}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+    <div>
+        <h1 class="h3 mb-1">Tutor</h1>
+        <p class="text-muted">Ask questions about your course material, write your reports, test yourself with a quiz, or make a study guide for a test.</p>
+    </div>
+    @if (!hasRunningSession)
+    {
+        @* Starts a timed session for the shown course (the study timer bar
+           then appears). Sessions from the Calendar start from their
+           reminder or the Dashboard instead, so they're linked to it. *@
+        <form method="post" asp-page="/Study/Index" asp-page-handler="Start" class="m-0">
+            <input type="hidden" name="courseId" value="@Model.CourseId" />
+            <input type="hidden" name="returnUrl" value="@(Context.Request.Path + Context.Request.QueryString)" />
+            <button type="submit" class="btn btn-outline-secondary" title="Time this study session - it shows on Analytics">&#9201; Start studying</button>
+        </form>
+    }
+</div>
+
+<ul class="nav nav-tabs mb-3">
+    <li class="nav-item">
+        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.CourseId" asp-route-tab="chat" class="nav-link @(Model.Active == "chat" ? "active" : "")">Chat</a>
+    </li>
+    <li class="nav-item">
+        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.CourseId" asp-route-tab="quiz" class="nav-link @(Model.Active == "quiz" ? "active" : "")">Quiz</a>
+    </li>
+    <li class="nav-item">
+        <a asp-page="/Tutor/Index" asp-route-courseId="@Model.CourseId" asp-route-tab="report" class="nav-link @(Model.Active == "report" ? "active" : "")">Report</a>
+    </li>
+    <li class="nav-item">
+        <a asp-page="/Tutor/Write" asp-route-courseId="@Model.CourseId" class="nav-link @(Model.Active == "write" ? "active" : "")">Write</a>
+    </li>
+    <li class="nav-item">
+        <a asp-page="/Tutor/StudyGuide" asp-route-courseId="@Model.CourseId" class="nav-link @(Model.Active == "studyguide" ? "active" : "")">Study guide</a>
+    </li>
+</ul>

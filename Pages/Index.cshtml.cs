@@ -78,7 +78,8 @@ public class IndexModel(ApplicationDbContext db, UserManager<ApplicationUser> us
             .ToListAsync();
 
         TodaysSessions = todaysTasks
-            .Select(t => new DashboardSessionView(t.Title, t.ScheduledStart, t.Assessment?.Course?.ColourHex ?? FolderColours.DefaultHex))
+            .Select(t => new DashboardSessionView(t.Id, t.Title, t.ScheduledStart, t.Assessment?.Course?.ColourHex ?? FolderColours.DefaultHex,
+                t.Assessment?.CourseId, t.IsCompleted || t.IsMissed))
             .ToList();
     }
 
@@ -146,4 +147,6 @@ public sealed record DashboardWeekDay(DateTime Date, bool IsToday, bool HasAsses
 
 /// <summary>One of today's AI-scheduled study sessions, enough to show on
 /// the Dashboard without loading the full Calendar page.</summary>
-public sealed record DashboardSessionView(string Title, DateTime ScheduledStart, string ColourHex);
+/// <summary>One of today's study sessions on the Dashboard. IsLogged hides
+/// its Start button once it's been marked done or missed.</summary>
+public sealed record DashboardSessionView(int TaskId, string Title, DateTime ScheduledStart, string ColourHex, int? CourseId, bool IsLogged);
